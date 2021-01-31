@@ -5,13 +5,14 @@ epsilon = 0.5
 lambda_const = 2
 ny = 0
 dt = 1e-7
-time_to_run = 1.0   # [s]
+time_to_run = 1e-3   # [s]
 L = 2*np.pi
 Nt = int(time_to_run/dt)
 sample_rate = 1/50
 n_k_vec = 20
 Nx = int(lambda_const**n_k_vec)
 u0 = 1
+bd_size = 2
 forcing = 0
 n_forcing = 0
 

@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
@@ -5,7 +6,6 @@ from math import floor, log, ceil, sqrt
 from params import *
 
 def plot_shells_vs_time():
-    file_names = ['data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
 
     for ifile, file_name in enumerate(file_names):
         data_in, header_dict = import_data(file_name)
@@ -19,29 +19,29 @@ def plot_shells_vs_time():
     # n_k_vec = 10
 
     legend = []
-    global k_vectors_to_plot
+    # global k_vectors_to_plot
     k_vectors_to_plot = [0, 5, 9, 16]
-    for k in k_vectors_to_plot[::-1]:
-        axes[1].plot(time.real, u_store[:, k].real)
+    for k in range(n_k_vec):
+        axes[0].plot(time.real, u_store[:, k].real)
         legend.append(f'k = {k_vec_temp[k]}')
     
 
+    axes[0].set_xlabel('Time', fontsize=12)
+    axes[0].set_ylabel('Velocity', fontsize=12)
+    axes[0].set_title('Real part')
+
+    for k in range(n_k_vec):
+        axes[1].plot(time.real, u_store[:, k].imag)
+        legend.append(f'k = {k_vec_temp[k]}')
+
     axes[1].set_xlabel('Time', fontsize=12)
     axes[1].set_ylabel('Velocity', fontsize=12)
-    axes[1].set_title('Real part')
-
-    # for k in range(n_k_vec):
-    #     axes[1].plot(time.real, u_store[:, k].imag)
-    #     legend.append(f'k = {k_vec_temp[k]}')
-
-    # axes[1].set_xlabel('Time', fontsize=12)
-    # axes[1].set_ylabel('Velocity', fontsize=12)
-    # axes[1].set_title('Imaginary part')
+    axes[1].set_title('Imaginary part')
     axes[1].set_title(f'Shell velocity vs. time')
     plt.suptitle(f'Parameters: f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
     plt.legend(legend, loc="center right", bbox_to_anchor=(1.6, 0.5))
     plt.subplots_adjust(left=0.086, right=0.805, wspace=0.3)
-    # plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
+    plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
 
     # handles, labels = axes[1].get_legend_handles_labels()
     # plt.figlegend(handles, labels, loc='center right', bbox_to_anchor=(1.0, 0.5))
@@ -199,11 +199,11 @@ def plots_related_to_ny():
         figs.append(fig)
         axes.append(ax)
 
-    file_names = ['data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
-                  'data/udata_ny1e-08_t1.000000e+00_n_f0_f0_j0.csv',
-                  'data/udata_ny1e-07_t1.000000e+00_n_f0_f0_j0.csv',
-                  'data/udata_ny1e-06_t1.000000e+00_n_f0_f0_j0.csv',
-                  'data/udata_ny1e-05_t1.000000e+00_n_f0_f0_j0.csv']
+    file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
+                  '../data/udata_ny1e-08_t1.000000e+00_n_f0_f0_j0.csv',
+                  '../data/udata_ny1e-07_t1.000000e+00_n_f0_f0_j0.csv',
+                  '../data/udata_ny1e-06_t1.000000e+00_n_f0_f0_j0.csv',
+                  '../data/udata_ny1e-05_t1.000000e+00_n_f0_f0_j0.csv']
 
     legend_ny = []
 
@@ -240,10 +240,10 @@ def plots_related_to_forcing():
         figs.append(fig)
         axes.append(ax)
 
-    file_names = ['data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
-                  'data/udata_ny0_t1.000000e+00_n_f0_f10_j10.csv',
-                  'data/udata_ny0_t1.000000e+00_n_f2_f10_j10.csv',
-                  'data/udata_ny0_t1.000000e+00_n_f4_f10_j10.csv']
+    file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
+                  '../data/udata_ny0_t1.000000e+00_n_f0_f10_j10.csv',
+                  '../data/udata_ny0_t1.000000e+00_n_f2_f10_j10.csv',
+                  '../data/udata_ny0_t1.000000e+00_n_f4_f10_j10.csv']
 
     legend_forcing = []
 
@@ -265,7 +265,7 @@ def plots_related_to_forcing():
     axes[1].legend(legend_forcing)
 
 def plot_eddie_freqs(axes):
-    file_names = ['data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
+    file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
 
     for ifile, file_name in enumerate(file_names):
         data_in, header_dict = import_data(file_name)
@@ -273,13 +273,23 @@ def plot_eddie_freqs(axes):
         u_store = data_in[:, 1:]
 
         analyse_eddie_turnovertime(u_store, header_dict, axes)
-   
-axes = plot_shells_vs_time()
-# plot_eddies()
-# plot_eddy_vel_histograms()
 
-plot_eddie_freqs(axes)
-# plots_related_to_ny()
-# plots_related_to_forcing()
 
-plt.show()
+if __name__ == "__main__":
+    # Define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--source", nargs='+', type=str)
+    args = arg_parser.parse_args()
+
+    # Prepare file names
+    file_names = args.source if type(args.source) is list else [args.source]
+    # Perform plotting
+    axes = plot_shells_vs_time()
+    # plot_eddies()
+    # plot_eddy_vel_histograms()
+
+    # plot_eddie_freqs(axes)
+    # plots_related_to_ny()
+    # plots_related_to_forcing()
+
+    plt.show()

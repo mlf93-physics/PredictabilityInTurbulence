@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
@@ -5,7 +6,6 @@ from math import floor, log, ceil, sqrt
 from params import *
 
 def plot_shells_vs_time():
-    file_names = ['../data/udata_ny0_t1.000000e-04_n_f0_f0_j0.csv']
 
     for ifile, file_name in enumerate(file_names):
         data_in, header_dict = import_data(file_name)
@@ -273,13 +273,23 @@ def plot_eddie_freqs(axes):
         u_store = data_in[:, 1:]
 
         analyse_eddie_turnovertime(u_store, header_dict, axes)
-   
-axes = plot_shells_vs_time()
-# plot_eddies()
-# plot_eddy_vel_histograms()
 
-# plot_eddie_freqs(axes)
-# plots_related_to_ny()
-# plots_related_to_forcing()
 
-plt.show()
+if __name__ == "__main__":
+    # Define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--source", nargs='+', type=str)
+    args = arg_parser.parse_args()
+
+    # Prepare file names
+    file_names = args.source if type(args.source) is list else [args.source]
+    # Perform plotting
+    axes = plot_shells_vs_time()
+    # plot_eddies()
+    # plot_eddy_vel_histograms()
+
+    # plot_eddie_freqs(axes)
+    # plots_related_to_ny()
+    # plots_related_to_forcing()
+
+    plt.show()

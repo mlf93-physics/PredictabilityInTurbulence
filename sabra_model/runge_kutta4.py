@@ -1,5 +1,5 @@
 from numba import njit, types
-from params import *
+from utils.params import *
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=True),
        types.Array(types.complex128, 1, 'C', readonly=False)))
@@ -32,7 +32,7 @@ def derivative_evaluator(u_old=None, du=None):
                         - ny*k_vec_temp**2*u_old[bd_size:-bd_size]
 
     # Apply forcing
-    du[n_forcing] += forcing
+    du[n_forcing + bd_size] += forcing
     return du
 
 @njit(types.Array(types.complex128, 1, 'C', readonly=False)

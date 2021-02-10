@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, types
 from pyinstrument import Profiler
 from runge_kutta4 import runge_kutta4_vec
-from params import *
+from utils.params import *
 
 profiler = Profiler()
 
@@ -37,7 +37,7 @@ def save_data():
     """Save the data to disc."""
     # Save data
     temp_time_to_run = "{:e}".format(time_to_run)
-    np.savetxt(f"""../data/udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{int(forcing.real)}_j{int(forcing.imag)}.csv""", data_out,
+    np.savetxt(f"""../data/udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{forcing.real}_j{int(forcing.imag)}.csv""", data_out,
                 delimiter=",",
                 header=f"""f={forcing}, n_f={n_forcing}, ny={ny},
                             time={time_to_run}, dt={dt}, epsilon={epsilon},
@@ -46,11 +46,11 @@ def save_data():
 # Run ny
 # for ny in [1e-6, 1e-7, 1e-8]:
 #     print(f'Running on ny={ny}')
-profiler.start()
-run_model(u_old, du_array, data_out)
-profiler.stop()
-print(profiler.output_text())
-save_data()
+# profiler.start()
+# run_model(u_old, du_array, data_out)
+# profiler.stop()
+# print(profiler.output_text())
+# save_data()
 
 # # Reset ny
 # ny = 0

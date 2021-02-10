@@ -3,7 +3,7 @@ import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
-from params import *
+from utils.params import *
 
 def plot_shells_vs_time():
 
@@ -199,11 +199,11 @@ def plots_related_to_ny():
         figs.append(fig)
         axes.append(ax)
 
-    file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
-                  '../data/udata_ny1e-08_t1.000000e+00_n_f0_f0_j0.csv',
-                  '../data/udata_ny1e-07_t1.000000e+00_n_f0_f0_j0.csv',
-                  '../data/udata_ny1e-06_t1.000000e+00_n_f0_f0_j0.csv',
-                  '../data/udata_ny1e-05_t1.000000e+00_n_f0_f0_j0.csv']
+    # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
+    #               '../data/udata_ny1e-08_t1.000000e+00_n_f0_f0_j0.csv',
+    #               '../data/udata_ny1e-07_t1.000000e+00_n_f0_f0_j0.csv',
+    #               '../data/udata_ny1e-06_t1.000000e+00_n_f0_f0_j0.csv',
+    #               '../data/udata_ny1e-05_t1.000000e+00_n_f0_f0_j0.csv']
 
     legend_ny = []
 
@@ -284,12 +284,12 @@ if __name__ == "__main__":
     # Prepare file names
     file_names = args.source if type(args.source) is list else [args.source]
     # Perform plotting
-    axes = plot_shells_vs_time()
+    # axes = plot_shells_vs_time()
     # plot_eddies()
     # plot_eddy_vel_histograms()
 
     # plot_eddie_freqs(axes)
-    # plots_related_to_ny()
+    plots_related_to_ny()
     # plots_related_to_forcing()
 
     plt.show()

@@ -1,5 +1,5 @@
 from numba import njit, types
-from utils.params import *
+from src.utils.params import *
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=True),
        types.Array(types.complex128, 1, 'C', readonly=False)))

@@ -5,9 +5,9 @@ epsilon = 0.5
 lambda_const = 2
 ny = 1e-8
 dt = 1e-7
-time_to_run = 10   # [s]
-Nt = int(time_to_run/dt)
 sample_rate = 1/1000
+burn_in_time = 1
+burn_in_lines = int(burn_in_time/dt*sample_rate)
 n_k_vec = 20
 u0 = 1
 bd_size = 2
@@ -24,8 +24,8 @@ k_vec_temp = np.array([lambda_const**(n + 1) for n in range(n_k_vec)], dtype=np.
 pre_factor = 1j*k_vec_temp
 # Define du array to store derivative
 du_array = np.zeros(n_k_vec + 2*bd_size, dtype=np.complex128)
-# Define data out array to store what should be saved.
-data_out = np.zeros((int(Nt*sample_rate), n_k_vec + 1), dtype=np.complex128)
+# # Define data out array to store what should be saved.
+# data_out = np.zeros((int(Nt*sample_rate), n_k_vec + 1), dtype=np.complex128)
 
 # Calculate initial k and u profile. Put in zeros at the boundaries
 initial_k_vec = k_vec_temp**(-1/3)

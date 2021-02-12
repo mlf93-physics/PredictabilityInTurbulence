@@ -1,15 +1,16 @@
 import numpy as np
 from numba import njit, types
 from pyinstrument import Profiler
-from runge_kutta4 import runge_kutta4_vec
-from utils.params import *
+from .runge_kutta4 import runge_kutta4_vec
+from src.utils.params import *
 
 profiler = Profiler()
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
-       types.Array(types.complex128, 2, 'C', readonly=False)))
-def run_model(u_old, du_array, data_out):
+       types.Array(types.complex128, 2, 'C', readonly=False),
+       types.int64))
+def run_model(u_old, du_array, data_out, Nt):
     """Execute the integration of the sabra shell model.
     
     Parameters
@@ -26,22 +27,16 @@ def run_model(u_old, du_array, data_out):
     sample_number = 0
     # Perform calculations
     for i in range(Nt):
-        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array)
         # Save samples for plotting
         if i % int(1/sample_rate) == 0:
             data_out[sample_number, 0] = dt*i + 0j
             data_out[sample_number, 1:] = u_old[bd_size:-bd_size]
             sample_number += 1
+        
+        # Update u_old
+        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array)
 
-def save_data():
-    """Save the data to disc."""
-    # Save data
-    temp_time_to_run = "{:e}".format(time_to_run)
-    np.savetxt(f"""../data/udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{forcing.real}_j{int(forcing.imag)}.csv""", data_out,
-                delimiter=",",
-                header=f"""f={forcing}, n_f={n_forcing}, ny={ny},
-                            time={time_to_run}, dt={dt}, epsilon={epsilon},
-                            lambda={lambda_const}""")
+
  
 # Run ny
 # for ny in [1e-6, 1e-7, 1e-8]:

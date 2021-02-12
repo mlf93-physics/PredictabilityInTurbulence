@@ -1,9 +1,10 @@
+from pathlib import Path
 import argparse
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
-from utils.params import *
+from params import *
 
 def plot_shells_vs_time():
 
@@ -53,7 +54,7 @@ def plot_energy_spectrum(u_store, header_dict, ax = None, omit=None):
     # for i in range(10):
     #     start = i*1000
     #     plt.plot(k_vec_temp, np.mean((u_store[start:(start + 1000)] * np.conj(u_store[start:(start + 1000)])).real, axis=0))
-    ax.plot(k_vec_temp, np.mean((u_store[-u_store.shape[0]//2:] * np.conj(u_store[-u_store.shape[0]//2:])).real, axis=0))
+    ax.plot(k_vec_temp, np.mean((u_store[-u_store.shape[0]//4:] * np.conj(u_store[-u_store.shape[0]//4:])).real, axis=0))
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlabel('k')
@@ -273,12 +274,73 @@ def plot_eddie_freqs(axes):
         u_store = data_in[:, 1:]
 
         analyse_eddie_turnovertime(u_store, header_dict, axes)
+    
+def analyse_error_norm_vs_time(u_stores, ref_file_index=None):
+
+    if len(u_stores.keys()) - 1 == 0:
+        raise IndexError('Not enough u_store arrays to compare.')
+
+    # combinations = [[j, i] for j in range(len(u_stores.keys()))
+    #     for i in range(j + 1) if j != i]
+    # error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
+    error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys()) - 1))
+
+    # for enum, indices in enumerate(combinations):
+        # error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
+        #     - u_stores[indices[1]], axis=1).real
+    counter = 0
+    for i in range(len(u_stores.keys())):
+        if i == ref_file_index:
+            continue
+        error_norm_vs_time[:, counter] = np.linalg.norm(u_stores[i]
+            - u_stores[ref_file_index], axis=1).real
+        counter += 1
+
+    return error_norm_vs_time
+
+def plot_error_norm_vs_time(path=None):
+    u_stores = {}
+
+    if path is None:
+        raise ValueError('No path specified')
+    
+    file_names = list(Path(path).glob('*.csv'))
+    # Find reference file
+    ref_file_index = None
+    for ifile, file in enumerate(file_names):
+        file_name = file.stem
+        if file_name.find('ref') >= 0:
+            ref_file_index = ifile
+    
+    if ref_file_index is None:
+        raise ValueError('No reference file found in specified directory')
+
+    for ifile, file_name in enumerate(file_names):
+        data_in, header_dict = import_data(file_name)
+        if ifile == ref_file_index:
+            time = data_in[burn_in_lines:2*burn_in_lines, 0].real
+            # Only save same amount of data as expected from pertubation runs
+            u_stores[ifile] = data_in[burn_in_lines:2*burn_in_lines, 1:]
+            continue
+        u_stores[ifile] = data_in[:burn_in_lines, 1:]
+
+    error_norm_vs_time = analyse_error_norm_vs_time(u_stores,
+        ref_file_index=ref_file_index)
+
+    plt.plot(time, error_norm_vs_time)
+    plt.xlabel('Time')
+    plt.ylabel('Error')
+    plt.yscale('log')
+    plt.title(f'Error vs time; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]}'+
+        f', time={header_dict["time"]}')
 
 
 if __name__ == "__main__":
     # Define arguments
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--source", nargs='+', type=str)
+    arg_parser.add_argument("--path", nargs='?', type=str)
     args = arg_parser.parse_args()
 
     # Prepare file names
@@ -289,7 +351,10 @@ if __name__ == "__main__":
     # plot_eddy_vel_histograms()
 
     # plot_eddie_freqs(axes)
-    plots_related_to_ny()
+    # plots_related_to_ny()
     # plots_related_to_forcing()
+
+    dir_name = args.path
+    plot_error_norm_vs_time(path=dir_name)
 
     plt.show()

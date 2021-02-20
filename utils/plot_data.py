@@ -5,11 +5,12 @@ from scipy import signal
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
 from params import *
+from import_data_funcs import import_data
 
-def plot_shells_vs_time():
+def plot_shells_vs_time(k_vectors_to_plot=None):
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name)
+        data_in, header_dict = import_data(file_name, old_header=False)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
@@ -20,9 +21,10 @@ def plot_shells_vs_time():
     # n_k_vec = 10
 
     legend = []
-    # global k_vectors_to_plot
-    k_vectors_to_plot = [0, 5, 9, 16]
-    for k in range(n_k_vec):
+    if k_vectors_to_plot is None:
+        k_vectors_to_plot = range(n_k_vec)
+    
+    for k in k_vectors_to_plot:
         axes[0].plot(time.real, u_store[:, k].real)
         legend.append(f'k = {k_vec_temp[k]}')
     
@@ -31,7 +33,7 @@ def plot_shells_vs_time():
     axes[0].set_ylabel('Velocity', fontsize=12)
     axes[0].set_title('Real part')
 
-    for k in range(n_k_vec):
+    for k in k_vectors_to_plot:
         axes[1].plot(time.real, u_store[:, k].imag)
         legend.append(f'k = {k_vec_temp[k]}')
 
@@ -46,7 +48,6 @@ def plot_shells_vs_time():
 
     # handles, labels = axes[1].get_legend_handles_labels()
     # plt.figlegend(handles, labels, loc='center right', bbox_to_anchor=(1.0, 0.5))
-    return axes
 
 
 def plot_energy_spectrum(u_store, header_dict, ax = None, omit=None):
@@ -106,9 +107,9 @@ def analyse_eddie_turnovertime(u_store, header_dict, axes):
     # plt.figure(10)
     axes[0].plot(k_vec_temp, eddy_freq, 'k.', label='Eddy freq. from $||u||$')
     axes[0].plot(k_vec_temp, k_vec_temp**(2/3), 'k--', label='$k^{2/3}$')
-    print('k_vectors_to_plot', k_vectors_to_plot)
-    for i, k in enumerate(k_vectors_to_plot[::-1]):
-        axes[0].plot(k_vec_temp[k], eddy_freq[k], '.', label='_nolegend_')
+    # print('k_vectors_to_plot', k_vectors_to_plot)
+    # for i, k in enumerate(k_vectors_to_plot[::-1]):
+    #     axes[0].plot(k_vec_temp[k], eddy_freq[k], '.', label='_nolegend_')
         
     axes[0].set_yscale('log')
     axes[0].set_xscale('log')
@@ -164,31 +165,7 @@ def plot_eddy_vel_histograms():
     # plt.legend(legend, loc='center right', bbox_to_anchor=(1.05, 0.5))
     plt.suptitle(f'u eddy prop dist; f={forcing}, ny={ny}, runs={Nt}')
 
-def import_data(file_name):
-    # Import header
-    header = ""
-    with open(file_name, 'r') as file:
-        for i in range(3):
-            header += file.readline().rstrip().lstrip().strip('#').strip().replace(' ', '')
-        header = header.split(',')
-
-    header_dict = {}
-    for item in header:
-        splitted_item = item.split("=")
-        if splitted_item[0] == "f":
-            header_dict[splitted_item[0]] = np.complex(splitted_item[1])
-        else:
-            header_dict[splitted_item[0]] = float(splitted_item[1])
-
-    print('header_dict', header_dict)
-
-    # Import data
-    data_in = np.genfromtxt(file_name,
-        dtype=np.complex, delimiter=',', skip_header=3)
-
-    return data_in, header_dict
-
-def plots_related_to_ny():
+def plots_related_to_energy():
     figs = []
     axes = []
 
@@ -209,7 +186,7 @@ def plots_related_to_ny():
     legend_ny = []
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name)
+        data_in, header_dict = import_data(file_name, old_header=False)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
@@ -249,7 +226,7 @@ def plots_related_to_forcing():
     legend_forcing = []
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name)
+        data_in, header_dict = import_data(file_name, old_header=False)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
@@ -266,35 +243,30 @@ def plots_related_to_forcing():
     axes[1].legend(legend_forcing)
 
 def plot_eddie_freqs(axes):
-    file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
+    # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name)
+        data_in, header_dict = import_data(file_name, old_header=False)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
         analyse_eddie_turnovertime(u_store, header_dict, axes)
     
-def analyse_error_norm_vs_time(u_stores, ref_file_index=None):
+def analyse_error_norm_vs_time(u_stores):
 
-    if len(u_stores.keys()) - 1 == 0:
+    if len(u_stores.keys()) == 0:
         raise IndexError('Not enough u_store arrays to compare.')
 
     # combinations = [[j, i] for j in range(len(u_stores.keys()))
     #     for i in range(j + 1) if j != i]
     # error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
-    error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys()) - 1))
+    error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys())))
 
     # for enum, indices in enumerate(combinations):
         # error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
         #     - u_stores[indices[1]], axis=1).real
-    counter = 0
     for i in range(len(u_stores.keys())):
-        if i == ref_file_index:
-            continue
-        error_norm_vs_time[:, counter] = np.linalg.norm(u_stores[i]
-            - u_stores[ref_file_index], axis=1).real
-        counter += 1
+        error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
 
     return error_norm_vs_time
 
@@ -315,22 +287,26 @@ def plot_error_norm_vs_time(path=None):
     if ref_file_index is None:
         raise ValueError('No reference file found in specified directory')
 
+    perturb_pos_list = []
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name)
         if ifile == ref_file_index:
-            time = data_in[burn_in_lines:2*burn_in_lines, 0].real
-            # Only save same amount of data as expected from pertubation runs
-            u_stores[ifile] = data_in[burn_in_lines:2*burn_in_lines, 1:]
             continue
-        u_stores[ifile] = data_in[:burn_in_lines, 1:]
+        data_in, header_dict = import_data(file_name, old_header=False)
+        ref_data_in, ref_header_dict = import_data(file_names[ref_file_index],
+            old_header=True, skip_lines=int(header_dict['perturb_pos']) - 2,
+            max_rows=int(header_dict['N_data']))
+        
+        u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
+        perturb_pos_list.append(f'pos. {header_dict["perturb_pos"]}')
 
-    error_norm_vs_time = analyse_error_norm_vs_time(u_stores,
-        ref_file_index=ref_file_index)
 
-    plt.plot(time, error_norm_vs_time)
+    error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
+
+    plt.plot(error_norm_vs_time)
     plt.xlabel('Time')
     plt.ylabel('Error')
     plt.yscale('log')
+    plt.legend(perturb_pos_list)
     plt.title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]}'+
         f', time={header_dict["time"]}')
@@ -339,22 +315,38 @@ def plot_error_norm_vs_time(path=None):
 if __name__ == "__main__":
     # Define arguments
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--source", nargs='+', type=str)
-    arg_parser.add_argument("--path", nargs='?', type=str)
+    arg_parser.add_argument("--source", nargs='+', default=None, type=str)
+    arg_parser.add_argument("--path", nargs='?', default=None, type=str)
+    arg_parser.add_argument("--plot_type", nargs='+', default=None, type=str)
     args = arg_parser.parse_args()
 
-    # Prepare file names
-    file_names = args.source if type(args.source) is list else [args.source]
-    # Perform plotting
-    # axes = plot_shells_vs_time()
-    # plot_eddies()
-    # plot_eddy_vel_histograms()
+    if args.source is not None:
+        # Prepare file names
+        file_names = args.source if type(args.source) is list else [args.source]
 
-    # plot_eddie_freqs(axes)
-    # plots_related_to_ny()
+    # Perform plotting
+    if "shells_vs_time" in args.plot_type:
+        plot_shells_vs_time()
+    
+    if "2D_eddies" in args.plot_type:
+        plot_eddies()
+    
+    if "eddie_vel_hist" in args.plot_type:
+        plot_eddy_vel_histograms()
+
+    if "eddie_freqs" in args.plot_type:
+        axes = [plt.axes()]
+        plot_eddie_freqs(axes)
+    
+    if "energy_plots" in args.plot_type:
+        plots_related_to_energy()
+
     # plots_related_to_forcing()
 
-    dir_name = args.path
-    plot_error_norm_vs_time(path=dir_name)
+    if "error_norm" in args.plot_type:
+        if args.path is None:
+            print('No path specified to analyse error norms.')
+        else:
+            plot_error_norm_vs_time(path=args.path)
 
     plt.show()

@@ -1,94 +1,216 @@
-from pathlib import Path
 import sys
 sys.path.append('..')
+import argparse
+from pathlib import Path
 import numpy as np
 from math import floor, log10
+import matplotlib.pyplot as plt
 from src.sabra_model.sabra_model import run_model
 from src.utils.params import *
+from src.utils.save_data_funcs import save_data
+from src.utils.import_data_funcs import import_header
+from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
+    dev_plot_perturbation_generation
 
-def calculate_pertubation():
-    """Calculate a random perturbation with a specific norm.
+def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False):
+    """Find the eigenvector corresponding to the minimal of the positive
+    eigenvalues of the initial vel. profile.
     
-    The norm of the error is defined in the parameter seeked_error_norm
+    Use the form of the sabra model to perform the calculation of the Jacobian
+    matrix. Perform singular-value-decomposition to get the eigenvalues and
+    -vectors. Choose the minimal of the positive eigenvalues with respect to
+    the real part of the eigenvalue.
+
+    Parameters
+    ----------
+    u_init_profiles : ndarray
+        The initial velocity profiles
 
     Returns
     -------
-    perturb : ndarray
-        The random perturbation
+    max_e_vector : ndarray
+        The eigenvectors corresponding to the minimal of the positive eigenvalues
     
     """
-    error = np.random.rand(2*n_k_vec).astype(np.float64)
-    perturb = np.empty(n_k_vec, dtype=np.complex)
-    perturb.real = error[:n_k_vec]
-    perturb.imag = error[n_k_vec:]
-    lambda_factor = seeked_error_norm/np.linalg.norm(perturb)
-    perturb = lambda_factor*perturb
+    print('\nFinding the eigenvalues and eigenvectors at the position of the' +
+        ' given velocity profiles\n')
+    n_profiles = u_init_profiles.shape[1]
+    e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex)
 
-    # Perform small test to be noticed if the perturbation is not as expected
-    np.testing.assert_almost_equal(np.linalg.norm(perturb), seeked_error_norm,
-        decimal=abs(floor(log10(seeked_error_norm))) + 1)
+    # Perform the conjugation
+    u_init_profiles_conj = u_init_profiles.conj()
+    # Perform calculation for all u_profiles
+    for i in range(n_profiles):
+        # Calculate the Jacobian matrix
+        J_matrix = np.zeros((n_k_vec, n_k_vec), dtype=np.complex)
+
+        # Add k=2 diagonal
+        J_matrix += np.diag(u_init_profiles_conj[bd_size+1:-bd_size - 1, i], k=2)
+        # Add k=1 diagonal
+        J_matrix += factor2*np.diag(np.concatenate(([0], u_init_profiles_conj[bd_size:-bd_size - 2, i])), k=1)
+        # Add k=-1 diagonal
+        J_matrix += factor3*np.diag(np.concatenate(([0], u_init_profiles[bd_size:-bd_size - 2, i])), k=-1)
+        # Add k=-2 diagonal
+        J_matrix += factor3*np.diag(u_init_profiles[bd_size+1:-bd_size - 1, i], k=-2)
+
+        # Add contribution from derivatives of the complex conjugates:
+        # J_matrix += np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=1)
+        # J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=-1)
+
+        
+        e_values, e_vectors = np.linalg.eig(J_matrix)
+        positive_e_values_indices = np.argwhere(e_values.real > 0)
+        largest_positive_e_value_index = 4# np.argmax(e_values[positive_e_values_indices].real)
+
+        chosen_e_value_index = positive_e_values_indices[
+            largest_positive_e_value_index]
+
+        e_vector_matrix[:, i:i+1] = e_vectors[:, chosen_e_value_index]
     
-    perturb = np.pad(perturb, pad_width=bd_size, mode='constant')
+        if dev_plot_active:
+            print('Largest positive eigenvalue', e_values[chosen_e_value_index])
+            
+            dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors)
 
-    return perturb
+    return e_vector_matrix
 
-def save_data(data_out, folder="", prefix=""):
-    """Save the data to disc."""
 
-    if len(folder) > 0:
-        folder = '/' + folder
+def calculate_perturbations(perturb_e_vectors, dev_plot_active=False):
+    """Calculate a random perturbation with a specific norm for each profile.
     
-    # Save data
-    temp_time_to_run = "{:e}".format(time_to_run)
-    np.savetxt(f"""data{folder}/{prefix}udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{forcing.real}_j{int(forcing.imag)}.csv""",
-                data_out, delimiter=",",
-                header=f"""f={forcing}, n_f={n_forcing}, ny={ny},
-                            time={time_to_run}, dt={dt}, epsilon={epsilon},
-                            lambda={lambda_const}""")
+    The norm of the error is defined in the parameter seeked_error_norm
 
-def import_start_u_profile(folder=None):
-    file_names = list(Path('data/' + folder).glob('*.csv'))
+    Parameters
+    ----------
+    perturb_e_vectors : ndarray
+        The eigenvectors along which to perform the perturbations
+
+    Returns
+    -------
+    perturbations : ndarray
+        The random perturbations
+    
+    """
+    n_e_vectors = perturb_e_vectors.shape[1]
+    perturbations = np.zeros((n_k_vec + 2*bd_size, n_e_vectors),
+        dtype=np.complex)
+    # Perform perturbation for all eigenvectors
+    for i in range(n_e_vectors):
+        # Generate random error
+        error = np.random.rand(2*n_k_vec).astype(np.float64)
+        # Reshape into complex array
+        perturb = np.empty(n_k_vec, dtype=np.complex)
+        perturb.real = error[:n_k_vec]
+        perturb.imag = error[n_k_vec:]
+        # Copy array for plotting
+        perturb_temp = np.copy(perturb)
+        
+        # Scale random perturbation with the normalised eigenvector
+        perturb = perturb*perturb_e_vectors[:, i]
+        # Find scaling factor in order to have the seeked norm of the error
+        lambda_factor = seeked_error_norm/np.linalg.norm(perturb)
+        # Scale down the perturbation
+        perturb = lambda_factor*perturb
+
+        # Perform small test to be noticed if the perturbation is not as expected
+        np.testing.assert_almost_equal(np.linalg.norm(perturb), seeked_error_norm,
+            decimal=abs(floor(log10(seeked_error_norm))) + 1)
+
+        perturbations[bd_size:-bd_size, i] = perturb
+
+        if dev_plot_active:
+            dev_plot_perturbation_generation(perturb, perturb_temp)
+
+    return perturbations
+
+def import_start_u_profiles(folder=None, n_profiles=1, args=None):
+    print(f'\nImporting {n_profiles} velocity profiles randomly positioned '+
+        'in reference datafile\n')
+
+    file_names = list(Path(folder).glob('*.csv'))
     # Find reference file
     ref_file = None
     for ifile, file in enumerate(file_names):
-        file_name = file.stem
-        if file_name.find('ref') >= 0:
+        file_stem = file.stem
+        if file_stem.find('ref') >= 0:
             ref_file = file.name
 
-    file_name = f'./data/{folder}/{ref_file}'
-    u_init_profile = np.genfromtxt(file_name,
-        dtype=np.complex, delimiter=',', skip_header=3 + burn_in_lines,
-        max_rows=1)
+    # Import header info
+    header_dict = import_header(folder=folder, file_name=ref_file, old_header=True)
 
-    # Skip time datapoint and pad array with zeros
-    u_init_profile = np.pad(u_init_profile[1:], pad_width=bd_size, mode='constant')
+    # Generate random start positions
+    np.random.seed(seed=1)
+    division_size = int(header_dict["N_data"] - args['burn_in_lines'] -
+        args['Nt']*sample_rate)//n_profiles
+    rand_division_start = np.random.randint(low=0, high=division_size,
+        size=n_profiles)
+    rand_positions = np.array([division_size*i + rand_division_start[i] for i in
+        range(n_profiles)])
 
-    return u_init_profile
+    print('\nPositions of perturbation start: ', (rand_positions +
+        args['burn_in_lines'])/sample_rate*dt, '(in seconds)')
 
-folder = 'ny1e-08_t5_000000e+00_n_f0_f0_15_j0'
-time_to_run = 5   # [s]
-Nt = int(time_to_run/dt)
-burn_in_time = 1
-burn_in_lines = int(burn_in_time/dt*sample_rate)
-# Define data out array to store what should be saved.
-data_out = np.zeros((int(Nt*sample_rate), n_k_vec + 1), dtype=np.complex128)
+    # Make path to ref file
+    file_name = Path(folder, ref_file)
+    
+    # Prepare u_init_profiles matrix
+    u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles), dtype=np.complex)
+    # Import velocity profiles
+    for i, position in enumerate(rand_positions):
+        temp_u_init_profile = np.genfromtxt(file_name,
+            dtype=np.complex, delimiter=',',
+            skip_header=np.int64(1 + position + args['burn_in_lines']),
+            max_rows=1)
+        
+        # Skip time datapoint and pad array with zeros
+        u_init_profiles[bd_size:-bd_size, i] = temp_u_init_profile[1:]
 
-# Make reference run
-print('Running reference')
-run_model(u_old, du_array, data_out, Nt)
-save_data(data_out, folder=folder, prefix=f'ref_')
+    return u_init_profiles, rand_positions + args['burn_in_lines']
 
-# Make perturbations
-u_init_profile = import_start_u_profile(folder=folder)
-n_runs = 3
-# Reset parameters
-time_to_run = time_to_run - burn_in_time   # [s]
-Nt = int(time_to_run/dt)
-for i in range(n_runs):
+def main(args=None):
+    args['Nt'] = int(args['time_to_run']/dt)
+    args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
 
-    perturb = calculate_pertubation()
-    u_old = u_init_profile + perturb
+    # Define data out array to store what should be saved.
+    # data_out = np.zeros((int(Nt*sample_rate), n_k_vec + 1), dtype=np.complex128)
 
-    print(f'Running perturbation {i + 1}')
-    run_model(u_old, du_array, data_out, Nt)
-    save_data(data_out, folder=folder, prefix=f'perturb{i + 1}_')
+    # Make reference run
+    # print('Running reference')
+    # run_model(u_old, du_array, data_out, Nt)
+    # save_data(data_out, folder=folder, prefix=f'ref_')
+
+    # Make perturbations
+    u_init_profiles, perturb_positions = import_start_u_profiles(folder=args['path'],
+        n_profiles=args['n_runs'], args=args)
+
+    if args['eigen_perturb']:
+        perturb_e_vectors = find_eigenvector_for_perturbation(u_init_profiles,
+            dev_plot_active=True)
+    else:
+        perturb_e_vectors = np.ones((n_k_vec, args['n_runs']), dtype=np.complex)
+
+    perturbations = calculate_perturbations(perturb_e_vectors,
+        dev_plot_active=True)
+    exit()
+
+    data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
+    for i in range(args['n_runs']):
+
+        u_old = u_init_profiles[:, i] + perturbations[:, i]
+
+        print(f'Running perturbation {i + 1}')
+        run_model(u_old, du_array, data_out, args['Nt'])
+        save_data(data_out, folder=args['path'], prefix=f'perturb{i + 1}_',
+            perturb_position=perturb_positions[i], args=args)
+
+if __name__ == "__main__":
+    # Define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--source", nargs='+', type=str)
+    arg_parser.add_argument("--path", nargs='?', type=str)
+    arg_parser.add_argument("--time_to_run", default=0.1, type=float)
+    arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
+    arg_parser.add_argument("--n_runs", default=1, type=int)
+    arg_parser.add_argument("--eigen_perturb", default=False, type=bool)
+    args = vars(arg_parser.parse_args())
+    main(args=args)

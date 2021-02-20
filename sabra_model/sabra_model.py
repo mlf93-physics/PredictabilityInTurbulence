@@ -1,8 +1,11 @@
+import sys
+sys.path.append('..')
 import numpy as np
 from numba import njit, types
 from pyinstrument import Profiler
-from .runge_kutta4 import runge_kutta4_vec
+from src.sabra_model.runge_kutta4 import runge_kutta4_vec
 from src.utils.params import *
+from src.utils.save_data_funcs import save_data
 
 profiler = Profiler()
 
@@ -37,21 +40,9 @@ def run_model(u_old, du_array, data_out, Nt):
         u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array)
 
 
- 
-# Run ny
-# for ny in [1e-6, 1e-7, 1e-8]:
-#     print(f'Running on ny={ny}')
-# profiler.start()
-# run_model(u_old, du_array, data_out)
-# profiler.stop()
-# print(profiler.output_text())
-# save_data()
-
-# # Reset ny
-# ny = 0
-# # Run forcing
-# forcing = 10 + 10j
-# for n_forcing in [0, 2, 4]:
-#     print(f'Running on n_forcing={n_forcing}')
-#     run_model()
-
+if __name__ == "__main__": 
+    profiler.start()
+    run_model(u_old, du_array, data_out, Nt)
+    profiler.stop()
+    print(profiler.output_text())
+    save_data(data_out)

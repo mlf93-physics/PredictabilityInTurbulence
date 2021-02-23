@@ -32,7 +32,17 @@ def dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors, header=None,
     plt.title('Mod of the components of the Jacobian' + title_append)
     plt.colorbar()
 
-    # sort_id = np.onese_values.argsort()
+    reprod_J_matrix = e_vectors @ np.diag(e_values) @ np.linalg.inv(e_vectors)
+
+    plt.figure()
+    plt.pcolormesh(np.abs(reprod_J_matrix), cmap='Reds')
+    # plt.ylim(20, 0)
+    plt.clim(0, None)
+    plt.xlabel('Shell number; $n$')
+    plt.ylabel('Shell number; $m$')
+    plt.title('Reproduced J_matrix' + title_append)
+    plt.colorbar()
+
 
     # Plot eigenvectors
     plt.figure()
@@ -44,14 +54,14 @@ def dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors, header=None,
 
     
 
-    plt.figure()
-    plt.plot(e_values[sort_id].real, 'k.')
-    plt.plot(e_values[sort_id].imag, 'r.')
-    # plt.xlabel('Lyaponov index; $j$')
-    # plt.ylabel('Shell number; $i$')
-    # plt.title('Mod squared of the components of the eigenvectors' + title_append)
-    # plt.colorbar()
-    plt.show()
+    # plt.figure()
+    # plt.plot(e_values[sort_id].real, 'k.')
+    # plt.plot(e_values[sort_id].imag, 'r.')
+    # # plt.xlabel('Lyaponov index; $j$')
+    # # plt.ylabel('Shell number; $i$')
+    # # plt.title('Mod squared of the components of the eigenvectors' + title_append)
+    # # plt.colorbar()
+    # plt.show()
 
 
 def dev_plot_perturbation_generation(perturb, perturb_temp):

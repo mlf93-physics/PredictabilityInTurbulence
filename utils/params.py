@@ -32,8 +32,8 @@ du_array = np.zeros(n_k_vec + 2*bd_size, dtype=np.complex128)
 
 # Calculate initial k and u profile. Put in zeros at the boundaries
 initial_k_vec = k_vec_temp**(-1/3)
-u_old = (u0*initial_k_vec).astype(np.complex128)
-u_old = np.pad(u_old, pad_width=bd_size, mode='constant')
+# u_old = (u0*initial_k_vec).astype(np.complex128)
+# u_old = np.pad(u_old, pad_width=bd_size, mode='constant')
 
 #### Initialise Lyaponov exponent estimator constants ####
 seeked_error_norm = 1e-14

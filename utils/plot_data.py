@@ -322,8 +322,9 @@ def plot_2D_eigen_mode_analysis(args=None):
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
-            u_init_profiles, dev_plot_active=False, args=args,
+            u_init_profiles, dev_plot_active=True, args=args,
             header=header_dict, perturb_positions=perturb_positions)
+
 
     perturb_pos_list = []
     # Sort eigenvalues
@@ -352,13 +353,17 @@ def plot_2D_eigen_mode_analysis(args=None):
         f', time={header_dict["time"]}s')
 
 def plot_3D_eigen_mode_analysis(args=None):
-    u_init_profiles, perturb_positions, header = import_start_u_profiles(folder=args['path'],
+    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
         args=args)
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
             u_init_profiles, dev_plot_active=False, args=args,
-            header=header, perturb_positions=perturb_positions)
+            header=header_dict, perturb_positions=perturb_positions)
+
+    for i in range(len(e_value_collection)):
+        sort_id = e_value_collection[i].argsort()[::-1]
+        e_vector_collection[i] = e_vector_collection[i][:, sort_id]
     
     e_vector_collection = np.array(e_vector_collection)
     
@@ -367,11 +372,20 @@ def plot_3D_eigen_mode_analysis(args=None):
     lyaponov_index = np.arange(0, n_k_vec, 1)
     shells, lyaponov_index = np.meshgrid(shells, lyaponov_index)
 
-    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-    ax.plot_surface(lyaponov_index, shells, np.mean(np.abs(e_vector_collection)**2, axis=0))
-    ax.set_xlabel('Shell number')
-    ax.set_ylabel('Lyaponov index')
+    # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    # ax.plot_surface(lyaponov_index, shells, np.mean(np.abs(e_vector_collection)**2, axis=0))
+    # ax.set_xlabel('Shell number')
+    # ax.set_ylabel('Lyaponov index')
     # ax.set_zlabel('')
+
+    plt.pcolormesh(np.mean(np.abs(e_vector_collection)**2, axis=0), cmap='Reds')
+    plt.xlabel('Lyaponov index')
+    plt.ylabel('Shell number')
+    plt.title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+    plt.colorbar()
+
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from math import floor, log10
 import matplotlib.pyplot as plt
-# from src.sabra_model.sabra_model import run_model
+from src.sabra_model.sabra_model import run_model
 from src.utils.params import *
 from src.utils.save_data_funcs import save_data
 from src.utils.import_data_funcs import import_header
@@ -216,9 +216,10 @@ def main(args=None):
     u_init_profiles, perturb_positions, _ = import_start_u_profiles(folder=args['path'],
         args=args)
 
+
     if args['eigen_perturb']:
         perturb_e_vectors, _, _ = find_eigenvector_for_perturbation(
-            u_init_profiles[0:-1:args['n_runs_per_profile']],
+            u_init_profiles[:, 0:-1:args['n_runs_per_profile']],
             dev_plot_active=False, args=args)
     else:
         perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),
@@ -227,7 +228,9 @@ def main(args=None):
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 
+
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
+    u_store_temp = []
     for i in range(args['n_runs_per_profile']*args['n_profiles']):
 
         u_old = u_init_profiles[:, i] + perturbations[:, i]

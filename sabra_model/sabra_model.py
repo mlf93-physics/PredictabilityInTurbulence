@@ -13,7 +13,7 @@ profiler = Profiler()
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 2, 'C', readonly=False),
-       types.int64))
+       types.int64), cache=True)
 def run_model(u_old, du_array, data_out, Nt):
     """Execute the integration of the sabra shell model.
     

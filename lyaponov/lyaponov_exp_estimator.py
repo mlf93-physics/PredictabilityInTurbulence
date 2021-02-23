@@ -5,14 +5,15 @@ from pathlib import Path
 import numpy as np
 from math import floor, log10
 import matplotlib.pyplot as plt
-from src.sabra_model.sabra_model import run_model
+# from src.sabra_model.sabra_model import run_model
 from src.utils.params import *
 from src.utils.save_data_funcs import save_data
 from src.utils.import_data_funcs import import_header
 from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
     dev_plot_perturbation_generation
 
-def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False):
+def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
+        args=None, header=None, perturb_positions=None):
     """Find the eigenvector corresponding to the minimal of the positive
     eigenvalues of the initial vel. profile.
     
@@ -34,33 +35,50 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False):
     """
     print('\nFinding the eigenvalues and eigenvectors at the position of the' +
         ' given velocity profiles\n')
-    n_profiles = u_init_profiles.shape[1]
+
+    n_profiles = args['n_profiles']
     e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex)
+
+    # Prepare for returning all eigen vectors and values
+    e_vector_collection = []
+    e_value_collection = []
 
     # Perform the conjugation
     u_init_profiles_conj = u_init_profiles.conj()
+    # Prepare prefactor vector to multiply on J_matrix
+    prefactor_reshaped = np.reshape(pre_factor, (-1, 1))
     # Perform calculation for all u_profiles
     for i in range(n_profiles):
         # Calculate the Jacobian matrix
         J_matrix = np.zeros((n_k_vec, n_k_vec), dtype=np.complex)
 
         # Add k=2 diagonal
-        J_matrix += np.diag(u_init_profiles_conj[bd_size+1:-bd_size - 1, i], k=2)
+        J_matrix += np.diag(
+            u_init_profiles_conj[bd_size+1:-bd_size - 1, i], k=2)
         # Add k=1 diagonal
-        J_matrix += factor2*np.diag(np.concatenate(([0], u_init_profiles_conj[bd_size:-bd_size - 2, i])), k=1)
+        J_matrix += factor2*np.diag(np.concatenate(([0],
+            u_init_profiles_conj[bd_size:-bd_size - 2, i])), k=1)
         # Add k=-1 diagonal
-        J_matrix += factor3*np.diag(np.concatenate(([0], u_init_profiles[bd_size:-bd_size - 2, i])), k=-1)
+        J_matrix += factor3*np.diag(np.concatenate(([0],
+            u_init_profiles[bd_size:-bd_size - 2, i])), k=-1)
         # Add k=-2 diagonal
-        J_matrix += factor3*np.diag(u_init_profiles[bd_size+1:-bd_size - 1, i], k=-2)
+        J_matrix += factor3*np.diag(
+            u_init_profiles[bd_size+1:-bd_size - 1, i], k=-2)
+
 
         # Add contribution from derivatives of the complex conjugates:
-        # J_matrix += np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=1)
-        # J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=-1)
+        J_matrix += np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=1)
+        J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=-1)
 
+        J_matrix = J_matrix*prefactor_reshaped
         
         e_values, e_vectors = np.linalg.eig(J_matrix)
+        
+        e_vector_collection.append(e_vectors)
+        e_value_collection.append(e_values)
+
         positive_e_values_indices = np.argwhere(e_values.real > 0)
-        largest_positive_e_value_index = 4# np.argmax(e_values[positive_e_values_indices].real)
+        largest_positive_e_value_index = np.argmax(e_values[positive_e_values_indices].real)
 
         chosen_e_value_index = positive_e_values_indices[
             largest_positive_e_value_index]
@@ -70,12 +88,14 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False):
         if dev_plot_active:
             print('Largest positive eigenvalue', e_values[chosen_e_value_index])
             
-            dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors)
+            dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors,
+                header=header, perturb_pos=perturb_positions[i])
 
-    return e_vector_matrix
+    return e_vector_matrix, e_vector_collection, e_value_collection
 
 
-def calculate_perturbations(perturb_e_vectors, dev_plot_active=False):
+def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
+        args=None):
     """Calculate a random perturbation with a specific norm for each profile.
     
     The norm of the error is defined in the parameter seeked_error_norm
@@ -91,11 +111,13 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False):
         The random perturbations
     
     """
-    n_e_vectors = perturb_e_vectors.shape[1]
-    perturbations = np.zeros((n_k_vec + 2*bd_size, n_e_vectors),
-        dtype=np.complex)
+    n_profiles = args['n_profiles']
+    n_runs_per_profile = args['n_runs_per_profile']
+    perturbations = np.zeros((n_k_vec + 2*bd_size, n_profiles*
+        n_runs_per_profile), dtype=np.complex)
+
     # Perform perturbation for all eigenvectors
-    for i in range(n_e_vectors):
+    for i in range(n_profiles*n_runs_per_profile):
         # Generate random error
         error = np.random.rand(2*n_k_vec).astype(np.float64)
         # Reshape into complex array
@@ -106,7 +128,7 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False):
         perturb_temp = np.copy(perturb)
         
         # Scale random perturbation with the normalised eigenvector
-        perturb = perturb*perturb_e_vectors[:, i]
+        perturb = perturb*perturb_e_vectors[:, i // n_runs_per_profile]
         # Find scaling factor in order to have the seeked norm of the error
         lambda_factor = seeked_error_norm/np.linalg.norm(perturb)
         # Scale down the perturbation
@@ -123,7 +145,15 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False):
 
     return perturbations
 
-def import_start_u_profiles(folder=None, n_profiles=1, args=None):
+def import_start_u_profiles(folder=None, args=None):
+    n_profiles = args['n_profiles']
+    n_runs_per_profile = args['n_runs_per_profile']
+
+    # if args['perturb_pos_mode'] == 'same_positions':
+    #     print('\nImporting 1 velocity profiles positioned randomly in '+
+    #         'reference datafile')
+
+    # elif args['perturb_pos_mode'] == 'rand_positions':
     print(f'\nImporting {n_profiles} velocity profiles randomly positioned '+
         'in reference datafile\n')
 
@@ -136,10 +166,10 @@ def import_start_u_profiles(folder=None, n_profiles=1, args=None):
             ref_file = file.name
 
     # Import header info
-    header_dict = import_header(folder=folder, file_name=ref_file, old_header=True)
+    header_dict = import_header(folder=folder, file_name=ref_file,
+        old_header=False)
 
     # Generate random start positions
-    np.random.seed(seed=1)
     division_size = int(header_dict["N_data"] - args['burn_in_lines'] -
         args['Nt']*sample_rate)//n_profiles
     rand_division_start = np.random.randint(low=0, high=division_size,
@@ -154,7 +184,8 @@ def import_start_u_profiles(folder=None, n_profiles=1, args=None):
     file_name = Path(folder, ref_file)
     
     # Prepare u_init_profiles matrix
-    u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles), dtype=np.complex)
+    u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles*
+        n_runs_per_profile), dtype=np.complex)
     # Import velocity profiles
     for i, position in enumerate(rand_positions):
         temp_u_init_profile = np.genfromtxt(file_name,
@@ -163,9 +194,11 @@ def import_start_u_profiles(folder=None, n_profiles=1, args=None):
             max_rows=1)
         
         # Skip time datapoint and pad array with zeros
-        u_init_profiles[bd_size:-bd_size, i] = temp_u_init_profile[1:]
+        u_init_profiles[bd_size:-bd_size, i:i + n_runs_per_profile] =\
+            np.repeat(np.reshape(temp_u_init_profile[1:],
+                (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
 
-    return u_init_profiles, rand_positions + args['burn_in_lines']
+    return u_init_profiles, rand_positions + args['burn_in_lines'], header_dict
 
 def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
@@ -180,28 +213,34 @@ def main(args=None):
     # save_data(data_out, folder=folder, prefix=f'ref_')
 
     # Make perturbations
-    u_init_profiles, perturb_positions = import_start_u_profiles(folder=args['path'],
-        n_profiles=args['n_runs'], args=args)
+    u_init_profiles, perturb_positions, _ = import_start_u_profiles(folder=args['path'],
+        args=args)
 
     if args['eigen_perturb']:
-        perturb_e_vectors = find_eigenvector_for_perturbation(u_init_profiles,
-            dev_plot_active=True)
+        perturb_e_vectors, _, _ = find_eigenvector_for_perturbation(
+            u_init_profiles[0:-1:args['n_runs_per_profile']],
+            dev_plot_active=False, args=args)
     else:
-        perturb_e_vectors = np.ones((n_k_vec, args['n_runs']), dtype=np.complex)
+        perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),
+            dtype=np.complex)
 
     perturbations = calculate_perturbations(perturb_e_vectors,
-        dev_plot_active=True)
-    exit()
+        dev_plot_active=False, args=args)
 
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
-    for i in range(args['n_runs']):
+    for i in range(args['n_runs_per_profile']*args['n_profiles']):
 
         u_old = u_init_profiles[:, i] + perturbations[:, i]
 
-        print(f'Running perturbation {i + 1}')
+        print(f'Running perturbation {i + 1}/' + 
+            f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
+            f" {i // args['n_runs_per_profile']}, profile run" +
+            f" {i % args['n_runs_per_profile']}")
+
         run_model(u_old, du_array, data_out, args['Nt'])
         save_data(data_out, folder=args['path'], prefix=f'perturb{i + 1}_',
-            perturb_position=perturb_positions[i], args=args)
+            perturb_position=perturb_positions[i // args['n_runs_per_profile']],
+            args=args)
 
 if __name__ == "__main__":
     # Define arguments
@@ -210,7 +249,15 @@ if __name__ == "__main__":
     arg_parser.add_argument("--path", nargs='?', type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
-    arg_parser.add_argument("--n_runs", default=1, type=int)
+    arg_parser.add_argument("--n_runs_per_profile", default=1, type=int)
+    arg_parser.add_argument("--n_profiles", default=1, type=int)
     arg_parser.add_argument("--eigen_perturb", default=False, type=bool)
+    # arg_parser.add_argument("--perturb_pos_mode", default='same_positions', type=str)
+    arg_parser.add_argument("--seed_mode", default='constant', type=str)
     args = vars(arg_parser.parse_args())
+
+    # Set seed if wished
+    if args['seed_mode'] == 'constant':
+        np.random.seed(seed=1)
+
     main(args=args)

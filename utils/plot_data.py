@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 from pathlib import Path
 import argparse
 import numpy as np
@@ -6,6 +8,8 @@ import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
 from params import *
 from import_data_funcs import import_data
+from src.lyaponov.lyaponov_exp_estimator import find_eigenvector_for_perturbation,\
+                                    import_start_u_profiles
 
 def plot_shells_vs_time(k_vectors_to_plot=None):
 
@@ -293,8 +297,9 @@ def plot_error_norm_vs_time(path=None):
             continue
         data_in, header_dict = import_data(file_name, old_header=False)
         ref_data_in, ref_header_dict = import_data(file_names[ref_file_index],
-            old_header=True, skip_lines=int(header_dict['perturb_pos']) - 2,
+            old_header=False, skip_lines=int(header_dict['perturb_pos']),
             max_rows=int(header_dict['N_data']))
+
         
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
         perturb_pos_list.append(f'pos. {header_dict["perturb_pos"]}')
@@ -311,6 +316,63 @@ def plot_error_norm_vs_time(path=None):
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]}'+
         f', time={header_dict["time"]}')
 
+def plot_2D_eigen_mode_analysis(args=None):
+    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
+        args=args)
+
+    _, e_vector_collection, e_value_collection =\
+        find_eigenvector_for_perturbation(
+            u_init_profiles, dev_plot_active=False, args=args,
+            header=header_dict, perturb_positions=perturb_positions)
+
+    perturb_pos_list = []
+    # Sort eigenvalues
+    for i in range(len(e_value_collection)):
+        sort_id = e_value_collection[i].argsort()[::-1]
+        e_value_collection[i] = e_value_collection[i][sort_id]
+
+        # Prepare legend
+        perturb_pos_list.append(f'Time: {perturb_positions[i]/sample_rate*dt:.1f}s')
+
+    e_value_collection = np.array(e_value_collection, dtype=np.complex).T
+
+    # Calculate Kolmogorov-Sinai entropy, i.e. sum of positive e values 
+    positive_e_values_only = np.copy(e_value_collection)
+    positive_e_values_only[positive_e_values_only <= 0] = 0 + 0j
+    kolm_sinai_entropy = np.sum(positive_e_values_only.real, axis=0)
+
+    # Plot normalised sum of eigenvalues
+    plt.plot(np.cumsum(e_value_collection.real, axis=0)/kolm_sinai_entropy,
+        linestyle='-', marker='.')
+    plt.xlabel('Lyaponov index')
+    plt.ylabel('$\sum_{i=0}^j \\lambda_j$ / H')
+    plt.legend(perturb_pos_list)
+    plt.title(f'Cummulative eigenvalues; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+
+def plot_3D_eigen_mode_analysis(args=None):
+    u_init_profiles, perturb_positions, header = import_start_u_profiles(folder=args['path'],
+        args=args)
+
+    _, e_vector_collection, e_value_collection =\
+        find_eigenvector_for_perturbation(
+            u_init_profiles, dev_plot_active=False, args=args,
+            header=header, perturb_positions=perturb_positions)
+    
+    e_vector_collection = np.array(e_vector_collection)
+    
+    # Make data.
+    shells = np.arange(0, n_k_vec, 1)
+    lyaponov_index = np.arange(0, n_k_vec, 1)
+    shells, lyaponov_index = np.meshgrid(shells, lyaponov_index)
+
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    ax.plot_surface(lyaponov_index, shells, np.mean(np.abs(e_vector_collection)**2, axis=0))
+    ax.set_xlabel('Shell number')
+    ax.set_ylabel('Lyaponov index')
+    # ax.set_zlabel('')
+
 
 if __name__ == "__main__":
     # Define arguments
@@ -318,35 +380,66 @@ if __name__ == "__main__":
     arg_parser.add_argument("--source", nargs='+', default=None, type=str)
     arg_parser.add_argument("--path", nargs='?', default=None, type=str)
     arg_parser.add_argument("--plot_type", nargs='+', default=None, type=str)
-    args = arg_parser.parse_args()
+    subparsers = arg_parser.add_subparsers()
+    eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
+        'Arguments needed for plotting 3D eigenmode analysis.')
+    eigen_mode_parser.add_argument("--burn_in_time",
+                                   default=0.0,
+                                   required=True,
+                                   type=float)
+    eigen_mode_parser.add_argument("--n_profiles",
+                                   default=1,
+                                   required=True,
+                                   type=int)
+    eigen_mode_parser.add_argument("--n_runs_per_profile",
+                                   default=1,
+                                   type=int)
+    eigen_mode_parser.add_argument("--time_to_run",
+                                   default=0.1,
+                                   type=float)
 
-    if args.source is not None:
+
+
+    args = vars(arg_parser.parse_args())
+
+    if 'burn_in_time' in args:
+        args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
+    if 'time_to_run' in args:
+        args['Nt'] = int(args['time_to_run']/dt*sample_rate)
+
+    if args['source'] is not None:
         # Prepare file names
-        file_names = args.source if type(args.source) is list else [args.source]
+        file_names = args['source'] if type(args['source']) is list else [args['source']]
 
     # Perform plotting
-    if "shells_vs_time" in args.plot_type:
+    if "shells_vs_time" in args['plot_type']:
         plot_shells_vs_time()
     
-    if "2D_eddies" in args.plot_type:
+    if "2D_eddies" in args['plot_type']:
         plot_eddies()
     
-    if "eddie_vel_hist" in args.plot_type:
+    if "eddie_vel_hist" in args['plot_type']:
         plot_eddy_vel_histograms()
 
-    if "eddie_freqs" in args.plot_type:
+    if "eddie_freqs" in args['plot_type']:
         axes = [plt.axes()]
         plot_eddie_freqs(axes)
     
-    if "energy_plots" in args.plot_type:
+    if "energy_plots" in args['plot_type']:
         plots_related_to_energy()
 
     # plots_related_to_forcing()
 
-    if "error_norm" in args.plot_type:
-        if args.path is None:
+    if "error_norm" in args['plot_type']:
+        if args['path'] is None:
             print('No path specified to analyse error norms.')
         else:
-            plot_error_norm_vs_time(path=args.path)
+            plot_error_norm_vs_time(path=args['path'])
+
+    if "eigen_mode_plot_3D" in args['plot_type']:
+        plot_3D_eigen_mode_analysis(args=args)
+    
+    if "eigen_mode_plot_2D" in args['plot_type']:
+        plot_2D_eigen_mode_analysis(args=args)
 
     plt.show()

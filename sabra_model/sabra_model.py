@@ -1,5 +1,6 @@
 import sys
 sys.path.append('..')
+import argparse
 import numpy as np
 from numba import njit, types
 from pyinstrument import Profiler
@@ -41,8 +42,26 @@ def run_model(u_old, du_array, data_out, Nt):
 
 
 if __name__ == "__main__": 
+    # Define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
+    time_group = arg_parser.add_mutually_exclusive_group(required=True)
+    time_group.add_argument("--time_to_run", type=float)
+    time_group.add_argument("--n_turnovers", type=float)
+    args = vars(arg_parser.parse_args())
+
+    if args['n_turnovers'] is not None:
+        args['time_to_run'] = ceil(eddy0_turnover_time*args['n_turnovers'])   # [s]
+        args['Nt'] = int(args['time_to_run']/dt)
+    else:
+        args['Nt'] = int(args['time_to_run']/dt)
+
+    data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1),
+        dtype=np.complex128)
+
     profiler.start()
-    run_model(u_old, du_array, data_out, Nt)
+    print('Running sabra model for {:.2f}s'.format(args["Nt"]*dt))
+    run_model(u_old, du_array, data_out, args['Nt'])
     profiler.stop()
     print(profiler.output_text())
-    save_data(data_out)
+    save_data(data_out, folder='data', args=args)

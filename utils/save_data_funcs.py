@@ -20,7 +20,8 @@ def save_data(data_out, folder="", prefix="", perturb_position=None,
         header += f', perturb_pos={int(perturb_position)}'
 
     # Save data
-    temp_time_to_run = "{:e}".format(args['time_to_run'])
-    np.savetxt(f"""{folder}/{prefix}udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{forcing.real}_j{int(forcing.imag)}.csv""",
+    temp_time_to_run = "{:.2e}".format(args['time_to_run'])
+    temp_ny = "{:.2e}".format(ny)
+    np.savetxt(f"""{folder}/{prefix}udata_ny{temp_ny}_t{temp_time_to_run}_n_f{n_forcing}_f{forcing.real}_j{int(forcing.imag)}.csv""",
                 data_out, delimiter=",",
                 header=header)

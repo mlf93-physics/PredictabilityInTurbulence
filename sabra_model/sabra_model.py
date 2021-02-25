@@ -45,10 +45,17 @@ if __name__ == "__main__":
     # Define arguments
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
+    arg_parser.add_argument("--ny_n", default=19, type=int)
     time_group = arg_parser.add_mutually_exclusive_group(required=True)
     time_group.add_argument("--time_to_run", type=float)
     time_group.add_argument("--n_turnovers", type=float)
     args = vars(arg_parser.parse_args())
+
+    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
+
+    # Define u_old
+    u_old = (u0*initial_k_vec).astype(np.complex128)
+    u_old = np.pad(u_old, pad_width=bd_size, mode='constant')
 
     if args['n_turnovers'] is not None:
         args['time_to_run'] = ceil(eddy0_turnover_time*args['n_turnovers'])   # [s]

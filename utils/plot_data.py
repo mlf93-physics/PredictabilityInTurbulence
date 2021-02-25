@@ -7,7 +7,7 @@ from scipy import signal
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
 from params import *
-from import_data_funcs import import_data
+from import_data_funcs import import_data, import_header
 from src.lyaponov.lyaponov_exp_estimator import find_eigenvector_for_perturbation,\
                                     import_start_u_profiles
 
@@ -45,10 +45,10 @@ def plot_shells_vs_time(k_vectors_to_plot=None):
     axes[1].set_ylabel('Velocity', fontsize=12)
     axes[1].set_title('Imaginary part')
     axes[1].set_title(f'Shell velocity vs. time')
-    plt.suptitle(f'Parameters: f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
+    plt.suptitle(f'Parameters: f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
     plt.legend(legend, loc="center right", bbox_to_anchor=(1.6, 0.5))
     plt.subplots_adjust(left=0.086, right=0.805, wspace=0.3)
-    plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
+    plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
 
     # handles, labels = axes[1].get_legend_handles_labels()
     # plt.figlegend(handles, labels, loc='center right', bbox_to_anchor=(1.0, 0.5))
@@ -67,19 +67,41 @@ def plot_energy_spectrum(u_store, header_dict, ax = None, omit=None):
     if omit == 'ny':
         ax.set_title(f'Energy spectrum vs. $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
     if omit == 'n_f':
-        ax.set_title(f'Energy spectrum vs. $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
+        ax.set_title(f'Energy spectrum vs. $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
 
-def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None):
+def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
+        path=None):
     # Plot total energy vs time
-    ax.plot(time.real, np.sum((u_store * np.conj(u_store)).real, axis=1))
+    energy_vs_time = np.sum(u_store * np.conj(u_store), axis=1).real
+    ax.plot(time.real, energy_vs_time, 'k')
     ax.set_xlabel('Time')
     ax.set_ylabel('Energy')
 
     if omit == 'ny':
         ax.set_title(f'Energy over time vs $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
     if omit == 'n_f':
-        ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]}, time={header_dict["time"]}')
-    # plt.ylim([1.68, 1.72])
+        ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    
+    if path is not None:
+        file_names = list(Path(path).glob('*.csv'))
+        # Find reference file
+        ref_file_index = None
+        for ifile, file in enumerate(file_names):
+            file_name = file.stem
+            if file_name.find('ref') >= 0:
+                ref_file_index = ifile
+        
+        if ref_file_index is None:
+            raise ValueError('No reference file found in specified directory')
+
+        for ifile, file_name in enumerate(file_names):
+            if ifile == ref_file_index:
+                continue
+            header_dict = import_header(file_name=file_name)
+            # print("header_dict['perturb_pos']", header_dict['perturb_pos'])
+            # print(energy_vs_time.shape)
+            plt.plot(header_dict['perturb_pos']/sample_rate*dt,
+                energy_vs_time[int(header_dict['perturb_pos'])], marker='o')
 
 def plot_eddies():
     n_eddies = 20
@@ -169,7 +191,7 @@ def plot_eddy_vel_histograms():
     # plt.legend(legend, loc='center right', bbox_to_anchor=(1.05, 0.5))
     plt.suptitle(f'u eddy prop dist; f={forcing}, ny={ny}, runs={Nt}')
 
-def plots_related_to_energy():
+def plots_related_to_energy(args=None):
     figs = []
     axes = []
 
@@ -181,12 +203,6 @@ def plots_related_to_energy():
         figs.append(fig)
         axes.append(ax)
 
-    # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv',
-    #               '../data/udata_ny1e-08_t1.000000e+00_n_f0_f0_j0.csv',
-    #               '../data/udata_ny1e-07_t1.000000e+00_n_f0_f0_j0.csv',
-    #               '../data/udata_ny1e-06_t1.000000e+00_n_f0_f0_j0.csv',
-    #               '../data/udata_ny1e-05_t1.000000e+00_n_f0_f0_j0.csv']
-
     legend_ny = []
 
     for ifile, file_name in enumerate(file_names):
@@ -196,7 +212,8 @@ def plots_related_to_energy():
 
         # Conserning ny
         plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
-        plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1], omit='ny')
+        plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
+            omit='ny', path=args['path'])
         legend_ny.append(f'$\\nu$ = {header_dict["ny"]}')
 
     # Plot Kolmogorov scaling
@@ -297,35 +314,40 @@ def plot_error_norm_vs_time(path=None):
             continue
         data_in, header_dict = import_data(file_name, old_header=False)
         ref_data_in, ref_header_dict = import_data(file_names[ref_file_index],
-            old_header=False, skip_lines=int(header_dict['perturb_pos']),
+            old_header=False, skip_lines=int(header_dict['perturb_pos']) + 1,
             max_rows=int(header_dict['N_data']))
-
         
+
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
-        perturb_pos_list.append(f'pos. {header_dict["perturb_pos"]}')
+        perturb_pos_list.append(
+            f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.1f}s')
 
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
+    time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
+        dtype=np.float, endpoint=False)
 
-    plt.plot(error_norm_vs_time)
-    plt.xlabel('Time')
+    print('time_array', time_array.shape, 'error_norm_vs_time', error_norm_vs_time.shape)
+
+    plt.plot(time_array, error_norm_vs_time)
+    plt.xlabel('Time [s]')
     plt.ylabel('Error')
     plt.yscale('log')
     plt.legend(perturb_pos_list)
     plt.title(f'Error vs time; f={header_dict["f"]}'+
-        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}')
 
 def plot_2D_eigen_mode_analysis(args=None):
-    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
-        args=args)
+    u_init_profiles, perturb_positions, header_dict =\
+        import_start_u_profiles(folder=args['path'], args=args)
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
             u_init_profiles, dev_plot_active=True, args=args,
             header=header_dict, perturb_positions=perturb_positions)
 
-
+    exit()
     perturb_pos_list = []
     # Sort eigenvalues
     for i in range(len(e_value_collection)):
@@ -343,16 +365,18 @@ def plot_2D_eigen_mode_analysis(args=None):
     kolm_sinai_entropy = np.sum(positive_e_values_only.real, axis=0)
 
     # Plot normalised sum of eigenvalues
+    plt.figure()
     plt.plot(np.cumsum(e_value_collection.real, axis=0)/kolm_sinai_entropy,
         linestyle='-', marker='.')
     plt.xlabel('Lyaponov index')
     plt.ylabel('$\sum_{i=0}^j \\lambda_j$ / H')
+    plt.ylim(-3, 1.5)
     plt.legend(perturb_pos_list)
     plt.title(f'Cummulative eigenvalues; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s')
 
-def plot_3D_eigen_mode_analysis(args=None):
+def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
     u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
         args=args)
 
@@ -370,22 +394,41 @@ def plot_3D_eigen_mode_analysis(args=None):
     # Make data.
     shells = np.arange(0, n_k_vec, 1)
     lyaponov_index = np.arange(0, n_k_vec, 1)
-    shells, lyaponov_index = np.meshgrid(shells, lyaponov_index)
+    lyaponov_index, shells = np.meshgrid(lyaponov_index, shells)
 
-    # fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
-    # ax.plot_surface(lyaponov_index, shells, np.mean(np.abs(e_vector_collection)**2, axis=0))
-    # ax.set_xlabel('Shell number')
-    # ax.set_ylabel('Lyaponov index')
-    # ax.set_zlabel('')
+    fig, ax = plt.subplots(subplot_kw={"projection": "3d"})
+    ax.plot_surface(lyaponov_index, shells,
+        np.mean(np.abs(e_vector_collection)**2, axis=0),
+        cmap='Reds')
+    ax.set_xlabel('Lyaponov index, $j$')
+    ax.set_ylabel('Shell number, $i$')
+    ax.set_zlabel('$<|v_i^j|^2>$')
+    ax.view_init(elev=27., azim=-21)
+    ax.set_title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
+    if right_handed:
+        ax.set_xlim(n_k_vec, 0)
+
+
+
+    fig = plt.figure()
+    axes = plt.axes()
     plt.pcolormesh(np.mean(np.abs(e_vector_collection)**2, axis=0), cmap='Reds')
     plt.xlabel('Lyaponov index')
     plt.ylabel('Shell number')
     plt.title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
-    plt.colorbar()
 
+    if right_handed:
+        plt.xlim(n_k_vec, 0)
+        axes.yaxis.tick_right()
+        axes.yaxis.set_label_position("right")
+        plt.colorbar(pad=0.1)
+    else:
+        plt.colorbar()
 
 
 if __name__ == "__main__":
@@ -394,6 +437,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("--source", nargs='+', default=None, type=str)
     arg_parser.add_argument("--path", nargs='?', default=None, type=str)
     arg_parser.add_argument("--plot_type", nargs='+', default=None, type=str)
+    arg_parser.add_argument("--seed_mode", default=False, type=bool)
+    arg_parser.add_argument("--start_time", nargs='+', type=float)
     subparsers = arg_parser.add_subparsers()
     eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
         'Arguments needed for plotting 3D eigenmode analysis.')
@@ -412,9 +457,11 @@ if __name__ == "__main__":
                                    default=0.1,
                                    type=float)
 
-
-
     args = vars(arg_parser.parse_args())
+
+    # Set seed if wished
+    if args['seed_mode']:
+        np.random.seed(seed=1)
 
     if 'burn_in_time' in args:
         args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
@@ -440,7 +487,7 @@ if __name__ == "__main__":
         plot_eddie_freqs(axes)
     
     if "energy_plots" in args['plot_type']:
-        plots_related_to_energy()
+        plots_related_to_energy(args=args)
 
     # plots_related_to_forcing()
 

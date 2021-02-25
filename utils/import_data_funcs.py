@@ -30,10 +30,9 @@ def import_data(file_name, old_header=False, skip_lines=0, max_rows=None):
     # Import header
     header_dict = import_header(file_name=file_name, old_header=old_header)
 
-    header_size = 1 if not old_header else 3
     # Import data
     data_in = np.genfromtxt(file_name,
-        dtype=np.complex, delimiter=',', skip_header=header_size + skip_lines,
+        dtype=np.complex, delimiter=',', skip_header=skip_lines,
         max_rows=max_rows)
 
     return data_in, header_dict

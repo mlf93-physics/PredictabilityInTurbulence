@@ -14,13 +14,13 @@ def dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors, header=None,
     sort_id = e_values.argsort()[::-1]
 
     # Plot eigenvalues
-    # plt.figure()
-    # plt.scatter(e_values.real, e_values.imag, color='b', marker='x')
-    # plt.scatter(e_values.real, e_values.conj().imag, color='r', marker='x')
-    # plt.xlabel('Real part')
-    # plt.ylabel('Imaginary part')
-    # plt.title('The eigenvalues' + title_append)
-    # plt.grid()
+    plt.figure()
+    plt.scatter(e_values.real, e_values.imag, color='b', marker='x')
+    plt.scatter(e_values.real, e_values.conj().imag, color='r', marker='x')
+    plt.xlabel('Real part')
+    plt.ylabel('Imaginary part')
+    plt.title('The eigenvalues' + title_append)
+    plt.grid()
 
     # Plot J_matrix
     plt.figure()
@@ -61,7 +61,7 @@ def dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors, header=None,
     # # plt.ylabel('Shell number; $i$')
     # # plt.title('Mod squared of the components of the eigenvectors' + title_append)
     # # plt.colorbar()
-    # plt.show()
+    plt.show()
 
 
 def dev_plot_perturbation_generation(perturb, perturb_temp):

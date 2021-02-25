@@ -71,7 +71,11 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
         J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=-1)
 
         J_matrix = J_matrix*prefactor_reshaped
-        
+
+        # Add the k=0 diagonal
+        temp_ny = args['ny'] if header is None else header['ny']
+        # J_matrix -= np.diag(temp_ny * k_vec_temp**2, k=0)
+
         e_values, e_vectors = np.linalg.eig(J_matrix)
         
         e_vector_collection.append(e_vectors)
@@ -119,7 +123,7 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
     # Perform perturbation for all eigenvectors
     for i in range(n_profiles*n_runs_per_profile):
         # Generate random error
-        error = np.random.rand(2*n_k_vec).astype(np.float64)
+        error = np.random.rand(2*n_k_vec).astype(np.float64)*2 - 1
         # Reshape into complex array
         perturb = np.empty(n_k_vec, dtype=np.complex)
         perturb.real = error[:n_k_vec]
@@ -154,8 +158,6 @@ def import_start_u_profiles(folder=None, args=None):
     #         'reference datafile')
 
     # elif args['perturb_pos_mode'] == 'rand_positions':
-    print(f'\nImporting {n_profiles} velocity profiles randomly positioned '+
-        'in reference datafile\n')
 
     file_names = list(Path(folder).glob('*.csv'))
     # Find reference file
@@ -169,16 +171,27 @@ def import_start_u_profiles(folder=None, args=None):
     header_dict = import_header(folder=folder, file_name=ref_file,
         old_header=False)
 
-    # Generate random start positions
-    division_size = int(header_dict["N_data"] - args['burn_in_lines'] -
-        args['Nt']*sample_rate)//n_profiles
-    rand_division_start = np.random.randint(low=0, high=division_size,
-        size=n_profiles)
-    rand_positions = np.array([division_size*i + rand_division_start[i] for i in
-        range(n_profiles)])
+    if args['start_time'] is None:
+        print(f'\nImporting {n_profiles} velocity profiles randomly positioned '+
+        'in reference datafile\n')
+        # Generate random start positions
+        division_size = int(header_dict["N_data"] - args['burn_in_lines'] -
+            args['Nt']*sample_rate)//n_profiles
+        rand_division_start = np.random.randint(low=0, high=division_size,
+            size=n_profiles)
+        positions = np.array([division_size*i + rand_division_start[i] for i in
+            range(n_profiles)])
 
-    print('\nPositions of perturbation start: ', (rand_positions +
-        args['burn_in_lines'])/sample_rate*dt, '(in seconds)')
+        burn_in = True
+    else:
+        print(f'\nImporting {n_profiles} velocity profiles positioned as '+
+        'requested in reference datafile\n')
+        positions = np.array(args['start_time'])*sample_rate/dt
+
+        burn_in = False
+
+    print('\nPositions of perturbation start: ', (positions +
+        burn_in*args['burn_in_lines'])/sample_rate*dt, '(in seconds)')
 
     # Make path to ref file
     file_name = Path(folder, ref_file)
@@ -187,10 +200,10 @@ def import_start_u_profiles(folder=None, args=None):
     u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles*
         n_runs_per_profile), dtype=np.complex)
     # Import velocity profiles
-    for i, position in enumerate(rand_positions):
+    for i, position in enumerate(positions):
         temp_u_init_profile = np.genfromtxt(file_name,
             dtype=np.complex, delimiter=',',
-            skip_header=np.int64(1 + position + args['burn_in_lines']),
+            skip_header=np.int64(1 + position + burn_in*args['burn_in_lines']),
             max_rows=1)
         
         # Skip time datapoint and pad array with zeros
@@ -198,7 +211,7 @@ def import_start_u_profiles(folder=None, args=None):
             np.repeat(np.reshape(temp_u_init_profile[1:],
                 (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
 
-    return u_init_profiles, rand_positions + args['burn_in_lines'], header_dict
+    return u_init_profiles, positions + burn_in*args['burn_in_lines'], header_dict
 
 def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
@@ -228,6 +241,8 @@ def main(args=None):
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 
+    # exit()
+
 
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
     u_store_temp = []
@@ -252,15 +267,29 @@ if __name__ == "__main__":
     arg_parser.add_argument("--path", nargs='?', type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
+    arg_parser.add_argument("--ny_n", default=19, type=int)
     arg_parser.add_argument("--n_runs_per_profile", default=1, type=int)
     arg_parser.add_argument("--n_profiles", default=1, type=int)
+    arg_parser.add_argument("--start_time", nargs='+', type=float)
     arg_parser.add_argument("--eigen_perturb", default=False, type=bool)
     # arg_parser.add_argument("--perturb_pos_mode", default='same_positions', type=str)
-    arg_parser.add_argument("--seed_mode", default='constant', type=str)
+    arg_parser.add_argument("--seed_mode", default=False, type=bool)
     args = vars(arg_parser.parse_args())
 
+    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
+
+    if args['start_time'] is not None:
+        if args['n_profiles'] > 1:
+            np.testing.assert_equal(len(args['start_time']), args['n_profiles'],
+                'The number of start times do not equal the number of' +
+                ' requested profiles.')
+        else:
+            np.testing.assert_equal(len(args['start_time']), 1,
+                'Too many start times given')
+
+
     # Set seed if wished
-    if args['seed_mode'] == 'constant':
+    if args['seed_mode']:
         np.random.seed(seed=1)
 
     main(args=args)

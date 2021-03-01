@@ -4,7 +4,7 @@ from math import floor, log10
 import argparse
 from pathlib import Path
 import numpy as np
-from numba import njit, prange
+from numba import njit
 from multiprocessing import Process
 from pyinstrument import Profiler
 import matplotlib.pyplot as plt
@@ -155,6 +155,8 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
     return perturbations
 
 def import_start_u_profiles(folder=None, args=None):
+    """Import all u profiles to start perturbations from"""
+
     n_profiles = args['n_profiles']
     n_runs_per_profile = args['n_runs_per_profile']
 
@@ -212,37 +214,18 @@ def import_start_u_profiles(folder=None, args=None):
 
     return u_init_profiles, positions + burn_in*args['burn_in_lines'], header_dict
 
-@njit(parallel=True, cache=True)
-def perturbation_runner(u_init_profiles, perturbations, perturb_positions,
-        du_array, data_out, Nt, ny, n_runs_per_profile, n_profiles):
+def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
+    run_count):
+    """Execute the sabra model on one given perturbed u_old profile"""
 
-    for i in prange(n_runs_per_profile*n_profiles):
-
-        u_old = u_init_profiles[:, i] + perturbations[:, i]
-
-        # print(f'Running perturbation {i + 1}/' + 
-        #     f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
-        #     f" {i // args['n_runs_per_profile']}, profile run" +
-        #     f" {i % args['n_runs_per_profile']}")
-
-        run_model(u_old, du_array, data_out, Nt, ny)
-        # save_data(data_out, folder=args['path'], prefix=f'perturb{i + 1}_',
-        #     perturb_position=perturb_positions[i // args['n_runs_per_profile']],
-        #     args=args)
-
-def perturbation_runner2(u_init_profile, perturbation, perturb_positions,
-        du_array, data_out, args, run):
-
-    u_old = u_init_profile + perturbation
-
-    print(f'Running perturbation {run + 1}/' + 
+    print(f'Running perturbation {run_count + 1}/' + 
         f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
-        f" {run // args['n_runs_per_profile']}, profile run" +
-        f" {run % args['n_runs_per_profile']}")
+        f" {run_count // args['n_runs_per_profile']}, profile run" +
+        f" {run_count % args['n_runs_per_profile']}")
 
     run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
-    save_data(data_out, folder=args['path'], prefix=f'perturb{run + 1}_',
-        perturb_position=perturb_positions[run // args['n_runs_per_profile']],
+    save_data(data_out, folder=args['path'], prefix=f'perturb{run_count + 1}_',
+        perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
 
 def main(args=None):
@@ -268,26 +251,18 @@ def main(args=None):
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 
-    print('perturbations', perturbations.shape, 'u_init_profiles', u_init_profiles.shape)
-
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
 
     processes = []
-
     profiler.start()
     for i in range(args['n_runs_per_profile']*args['n_profiles']):
-        processes.append(Process(target=perturbation_runner2,
-            args=(u_init_profiles[:, i], perturbations[:, i], perturb_positions,
+        processes.append(Process(target=perturbation_runner,
+            args=(u_init_profiles[:, i] + perturbations[:, i], perturb_positions,
                 du_array, data_out, args, i)))
         processes[-1].start()
 
     for i in range(len(processes)):
         processes[i].join()
-
-    # perturbation_runner(u_init_profiles, perturbations, perturb_positions,
-    #     du_array, data_out, args['Nt'], args['ny'], args['n_runs_per_profile'],
-    #     args['n_profiles'])
-
 
     
     profiler.stop()

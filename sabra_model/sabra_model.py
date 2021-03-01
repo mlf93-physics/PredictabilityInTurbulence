@@ -1,15 +1,20 @@
+import sys
+sys.path.append('..')
+import argparse
 import numpy as np
 from numba import njit, types
 from pyinstrument import Profiler
-from runge_kutta4 import runge_kutta4_vec
-from params import *
+from src.sabra_model.runge_kutta4 import runge_kutta4_vec
+from src.utils.params import *
+from src.utils.save_data_funcs import save_data
 
 profiler = Profiler()
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
-       types.Array(types.complex128, 2, 'C', readonly=False)))
-def run_model(u_old, du_array, data_out):
+       types.Array(types.complex128, 2, 'C', readonly=False),
+       types.int64, types.float64), cache=True)
+def run_model(u_old, du_array, data_out, Nt, ny):
     """Execute the integration of the sabra shell model.
     
     Parameters
@@ -26,37 +31,44 @@ def run_model(u_old, du_array, data_out):
     sample_number = 0
     # Perform calculations
     for i in range(Nt):
-        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array)
         # Save samples for plotting
         if i % int(1/sample_rate) == 0:
             data_out[sample_number, 0] = dt*i + 0j
             data_out[sample_number, 1:] = u_old[bd_size:-bd_size]
             sample_number += 1
+        
+        # Update u_old
+        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny)
 
-def save_data():
-    """Save the data to disc."""
-    # Save data
-    temp_time_to_run = "{:e}".format(time_to_run)
-    np.savetxt(f"""../data/udata_ny{ny}_t{temp_time_to_run}_n_f{n_forcing}_f{int(forcing.real)}_j{int(forcing.imag)}.csv""", data_out,
-                delimiter=",",
-                header=f"""f={forcing}, n_f={n_forcing}, ny={ny},
-                            time={time_to_run}, dt={dt}, epsilon={epsilon},
-                            lambda={lambda_const}""")
- 
-# Run ny
-# for ny in [1e-6, 1e-7, 1e-8]:
-#     print(f'Running on ny={ny}')
-profiler.start()
-run_model(u_old, du_array, data_out)
-profiler.stop()
-print(profiler.output_text())
-save_data()
 
-# # Reset ny
-# ny = 0
-# # Run forcing
-# forcing = 10 + 10j
-# for n_forcing in [0, 2, 4]:
-#     print(f'Running on n_forcing={n_forcing}')
-#     run_model()
+if __name__ == "__main__": 
+    # Define arguments
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
+    arg_parser.add_argument("--ny_n", default=19, type=int)
+    time_group = arg_parser.add_mutually_exclusive_group(required=True)
+    time_group.add_argument("--time_to_run", type=float)
+    time_group.add_argument("--n_turnovers", type=float)
+    args = vars(arg_parser.parse_args())
 
+    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
+
+    # Define u_old
+    u_old = (u0*initial_k_vec).astype(np.complex128)
+    u_old = np.pad(u_old, pad_width=bd_size, mode='constant')
+
+    if args['n_turnovers'] is not None:
+        args['time_to_run'] = ceil(eddy0_turnover_time*args['n_turnovers'])   # [s]
+        args['Nt'] = int(args['time_to_run']/dt)
+    else:
+        args['Nt'] = int(args['time_to_run']/dt)
+
+    data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1),
+        dtype=np.complex128)
+
+    profiler.start()
+    print('Running sabra model for {:.2f}s'.format(args["Nt"]*dt))
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
+    profiler.stop()
+    print(profiler.output_text())
+    save_data(data_out, folder='data', args=args)

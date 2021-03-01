@@ -320,7 +320,7 @@ def plot_error_norm_vs_time(path=None):
 
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
         perturb_pos_list.append(
-            f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.1f}s')
+            f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.2f}s')
 
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
@@ -344,10 +344,10 @@ def plot_2D_eigen_mode_analysis(args=None):
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
-            u_init_profiles, dev_plot_active=True, args=args,
+            u_init_profiles, dev_plot_active=False, args=args,
             header=header_dict, perturb_positions=perturb_positions)
 
-    exit()
+    # exit()
     perturb_pos_list = []
     # Sort eigenvalues
     for i in range(len(e_value_collection)):

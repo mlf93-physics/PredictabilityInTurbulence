@@ -13,8 +13,8 @@ profiler = Profiler()
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 2, 'C', readonly=False),
-       types.int64), cache=True)
-def run_model(u_old, du_array, data_out, Nt):
+       types.int64, types.float64), cache=True)
+def run_model(u_old, du_array, data_out, Nt, ny):
     """Execute the integration of the sabra shell model.
     
     Parameters
@@ -38,7 +38,7 @@ def run_model(u_old, du_array, data_out, Nt):
             sample_number += 1
         
         # Update u_old
-        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array)
+        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny)
 
 
 if __name__ == "__main__": 
@@ -68,7 +68,7 @@ if __name__ == "__main__":
 
     profiler.start()
     print('Running sabra model for {:.2f}s'.format(args["Nt"]*dt))
-    run_model(u_old, du_array, data_out, args['Nt'])
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
     profiler.stop()
     print(profiler.output_text())
     save_data(data_out, folder='data', args=args)

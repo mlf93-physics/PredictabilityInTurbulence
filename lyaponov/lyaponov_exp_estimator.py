@@ -74,7 +74,7 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
 
         # Add the k=0 diagonal
         temp_ny = args['ny'] if header is None else header['ny']
-        # J_matrix -= np.diag(temp_ny * k_vec_temp**2, k=0)
+        J_matrix -= np.diag(temp_ny * k_vec_temp**2, k=0)
 
         e_values, e_vectors = np.linalg.eig(J_matrix)
         
@@ -153,12 +153,6 @@ def import_start_u_profiles(folder=None, args=None):
     n_profiles = args['n_profiles']
     n_runs_per_profile = args['n_runs_per_profile']
 
-    # if args['perturb_pos_mode'] == 'same_positions':
-    #     print('\nImporting 1 velocity profiles positioned randomly in '+
-    #         'reference datafile')
-
-    # elif args['perturb_pos_mode'] == 'rand_positions':
-
     file_names = list(Path(folder).glob('*.csv'))
     # Find reference file
     ref_file = None
@@ -217,32 +211,24 @@ def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
     args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
 
-    # Define data out array to store what should be saved.
-    # data_out = np.zeros((int(Nt*sample_rate), n_k_vec + 1), dtype=np.complex128)
-
-    # Make reference run
-    # print('Running reference')
-    # run_model(u_old, du_array, data_out, Nt)
-    # save_data(data_out, folder=folder, prefix=f'ref_')
-
     # Make perturbations
-    u_init_profiles, perturb_positions, _ = import_start_u_profiles(folder=args['path'],
+    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
         args=args)
 
 
     if args['eigen_perturb']:
+        print('\nRunning with eigen_perturb\n')
         perturb_e_vectors, _, _ = find_eigenvector_for_perturbation(
             u_init_profiles[:, 0:-1:args['n_runs_per_profile']],
-            dev_plot_active=False, args=args)
+            dev_plot_active=False, args=args, header=header_dict,
+            perturb_positions=perturb_positions)
     else:
+        print('\nRunning without eigen_perturb\n')
         perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),
             dtype=np.complex)
-
+    
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
-
-    # exit()
-
 
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
     u_store_temp = []
@@ -255,7 +241,7 @@ def main(args=None):
             f" {i // args['n_runs_per_profile']}, profile run" +
             f" {i % args['n_runs_per_profile']}")
 
-        run_model(u_old, du_array, data_out, args['Nt'])
+        run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
         save_data(data_out, folder=args['path'], prefix=f'perturb{i + 1}_',
             perturb_position=perturb_positions[i // args['n_runs_per_profile']],
             args=args)
@@ -271,12 +257,13 @@ if __name__ == "__main__":
     arg_parser.add_argument("--n_runs_per_profile", default=1, type=int)
     arg_parser.add_argument("--n_profiles", default=1, type=int)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
-    arg_parser.add_argument("--eigen_perturb", default=False, type=bool)
-    # arg_parser.add_argument("--perturb_pos_mode", default='same_positions', type=str)
+    arg_parser.add_argument("--eigen_perturb", action='store_true')
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     args = vars(arg_parser.parse_args())
 
-    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
+    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
+
+    print('args', args)
 
     if args['start_time'] is not None:
         if args['n_profiles'] > 1:

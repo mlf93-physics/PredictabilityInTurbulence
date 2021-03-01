@@ -2,9 +2,10 @@ from numba import njit, types
 from src.utils.params import *
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=True),
-       types.Array(types.complex128, 1, 'C', readonly=False)),
+       types.Array(types.complex128, 1, 'C', readonly=False),
+       types.float64),
        cache=True)
-def derivative_evaluator(u_old=None, du=None):
+def derivative_evaluator(u_old=None, du=None, ny=None):
     """Derivative evaluator used in the Runge-Kutta method.
 
     Calculates the derivative of the shell velocities.
@@ -39,9 +40,10 @@ def derivative_evaluator(u_old=None, du=None):
 @njit(types.Array(types.complex128, 1, 'C', readonly=False)
       (types.Array(types.complex128, 1, 'C', readonly=False),
        types.float64,
-       types.Array(types.complex128, 1, 'C', readonly=False)),
+       types.Array(types.complex128, 1, 'C', readonly=False),
+       types.float64),
        cache=True)
-def runge_kutta4_vec(y0=0, h=1, du=None):
+def runge_kutta4_vec(y0=0, h=1, du=None, ny=None):
     """Performs the Runge-Kutta-4 integration of the shell velocities.
     
     Parameters
@@ -63,10 +65,10 @@ def runge_kutta4_vec(y0=0, h=1, du=None):
     
     """
     # Calculate the k's
-    k1 = h*derivative_evaluator(u_old=y0, du=du)
-    k2 = h*derivative_evaluator(u_old=y0 + 1/2*k1, du=du)
-    k3 = h*derivative_evaluator(u_old=y0 + 1/2*k2, du=du)
-    k4 = h*derivative_evaluator(u_old=y0 + k3, du=du)
+    k1 = h*derivative_evaluator(u_old=y0, du=du, ny=ny)
+    k2 = h*derivative_evaluator(u_old=y0 + 1/2*k1, du=du, ny=ny)
+    k3 = h*derivative_evaluator(u_old=y0 + 1/2*k2, du=du, ny=ny)
+    k4 = h*derivative_evaluator(u_old=y0 + k3, du=du, ny=ny)
     
     # Update y
     y0 = y0 + 1/6*k1 + 1/3*k2 + 1/3*k3 + 1/6*k4

@@ -231,7 +231,7 @@ def main(args=None):
         dev_plot_active=False, args=args)
 
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
-    u_store_temp = []
+    
     for i in range(args['n_runs_per_profile']*args['n_profiles']):
 
         u_old = u_init_profiles[:, i] + perturbations[:, i]

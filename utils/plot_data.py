@@ -291,16 +291,16 @@ def analyse_error_norm_vs_time(u_stores):
 
     return error_norm_vs_time
 
-def plot_error_norm_vs_time(path=None):
+def plot_error_norm_vs_time(args=None):
     u_stores = {}
 
-    if path is None:
+    if args['path'] is None:
         raise ValueError('No path specified')
     
-    file_names = list(Path(path).glob('*.csv'))
+    ref_file_name = list(Path(args['path']).glob('*.csv'))
     # Find reference file
     ref_file_index = None
-    for ifile, file in enumerate(file_names):
+    for ifile, file in enumerate(ref_file_name):
         file_name = file.stem
         if file_name.find('ref') >= 0:
             ref_file_index = ifile
@@ -308,12 +308,13 @@ def plot_error_norm_vs_time(path=None):
     if ref_file_index is None:
         raise ValueError('No reference file found in specified directory')
 
+    perturb_file_names = list(Path(args['path'], args['perturb_folder']).
+        glob('*.csv'))
+
     perturb_pos_list = []
-    for ifile, file_name in enumerate(file_names):
-        if ifile == ref_file_index:
-            continue
-        data_in, header_dict = import_data(file_name, old_header=False)
-        ref_data_in, ref_header_dict = import_data(file_names[ref_file_index],
+    for ifile, file_name in enumerate(perturb_file_names):
+        data_in, header_dict = import_data(file_name)
+        ref_data_in, ref_header_dict = import_data(ref_file_name[ref_file_index],
             old_header=False, skip_lines=int(header_dict['perturb_pos']) + 1,
             max_rows=int(header_dict['N_data']))
         
@@ -321,13 +322,15 @@ def plot_error_norm_vs_time(path=None):
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
         perturb_pos_list.append(
             f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.2f}s')
+        
+        if args['n_files'] is not None:
+            if ifile + 1 >= args['n_files']:
+                break
 
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
         dtype=np.float, endpoint=False)
-
-    print('time_array', time_array.shape, 'error_norm_vs_time', error_norm_vs_time.shape)
 
     plt.plot(time_array, error_norm_vs_time)
     plt.xlabel('Time [s]')
@@ -336,7 +339,7 @@ def plot_error_norm_vs_time(path=None):
     plt.legend(perturb_pos_list)
     plt.title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}')
+        f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
 
 def plot_2D_eigen_mode_analysis(args=None):
     u_init_profiles, perturb_positions, header_dict =\
@@ -440,6 +443,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
     subparsers = arg_parser.add_subparsers()
+    perturb_parser = subparsers.add_parser("perturb_plot", help=
+        'Arguments needed for plotting the perturbation vs time plot.')
+    perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
+    perturb_parser.add_argument("--n_files", default=None, type=int)
     eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
         'Arguments needed for plotting 3D eigenmode analysis.')
     eigen_mode_parser.add_argument("--burn_in_time",
@@ -495,7 +502,7 @@ if __name__ == "__main__":
         if args['path'] is None:
             print('No path specified to analyse error norms.')
         else:
-            plot_error_norm_vs_time(path=args['path'])
+            plot_error_norm_vs_time(args=args)
 
     if "eigen_mode_plot_3D" in args['plot_type']:
         plot_3D_eigen_mode_analysis(args=args)

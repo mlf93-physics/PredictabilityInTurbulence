@@ -5,6 +5,7 @@ import argparse
 from pathlib import Path
 import numpy as np
 from numba import njit, prange
+from multiprocessing import Process
 from pyinstrument import Profiler
 import matplotlib.pyplot as plt
 from src.sabra_model.sabra_model import run_model
@@ -229,6 +230,21 @@ def perturbation_runner(u_init_profiles, perturbations, perturb_positions,
         #     perturb_position=perturb_positions[i // args['n_runs_per_profile']],
         #     args=args)
 
+def perturbation_runner2(u_init_profile, perturbation, perturb_positions,
+        du_array, data_out, args, run):
+
+    u_old = u_init_profile + perturbation
+
+    print(f'Running perturbation {run + 1}/' + 
+        f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
+        f" {run // args['n_runs_per_profile']}, profile run" +
+        f" {run % args['n_runs_per_profile']}")
+
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
+    save_data(data_out, folder=args['path'], prefix=f'perturb{run + 1}_',
+        perturb_position=perturb_positions[run // args['n_runs_per_profile']],
+        args=args)
+
 def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
     args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
@@ -252,12 +268,27 @@ def main(args=None):
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 
+    print('perturbations', perturbations.shape, 'u_init_profiles', u_init_profiles.shape)
+
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
 
+    processes = []
+
     profiler.start()
-    perturbation_runner(u_init_profiles, perturbations, perturb_positions,
-        du_array, data_out, args['Nt'], args['ny'], args['n_runs_per_profile'],
-        args['n_profiles'])
+    for i in range(args['n_runs_per_profile']*args['n_profiles']):
+        processes.append(Process(target=perturbation_runner2,
+            args=(u_init_profiles[:, i], perturbations[:, i], perturb_positions,
+                du_array, data_out, args, i)))
+        processes[-1].start()
+
+    for i in range(len(processes)):
+        processes[i].join()
+
+    # perturbation_runner(u_init_profiles, perturbations, perturb_positions,
+    #     du_array, data_out, args['Nt'], args['ny'], args['n_runs_per_profile'],
+    #     args['n_profiles'])
+
+
     
     profiler.stop()
     print(profiler.output_text())

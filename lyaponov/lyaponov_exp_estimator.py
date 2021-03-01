@@ -1,9 +1,12 @@
 import sys
 sys.path.append('..')
+from math import floor, log10
 import argparse
 from pathlib import Path
 import numpy as np
-from math import floor, log10
+from numba import njit
+from multiprocessing import Process
+from pyinstrument import Profiler
 import matplotlib.pyplot as plt
 from src.sabra_model.sabra_model import run_model
 from src.utils.params import *
@@ -11,6 +14,8 @@ from src.utils.save_data_funcs import save_data
 from src.utils.import_data_funcs import import_header
 from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
     dev_plot_perturbation_generation
+
+profiler = Profiler()
 
 def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
         args=None, header=None, perturb_positions=None):
@@ -150,6 +155,8 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
     return perturbations
 
 def import_start_u_profiles(folder=None, args=None):
+    """Import all u profiles to start perturbations from"""
+
     n_profiles = args['n_profiles']
     n_runs_per_profile = args['n_runs_per_profile']
 
@@ -207,6 +214,20 @@ def import_start_u_profiles(folder=None, args=None):
 
     return u_init_profiles, positions + burn_in*args['burn_in_lines'], header_dict
 
+def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
+    run_count):
+    """Execute the sabra model on one given perturbed u_old profile"""
+
+    print(f'Running perturbation {run_count + 1}/' + 
+        f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
+        f" {run_count // args['n_runs_per_profile']}, profile run" +
+        f" {run_count % args['n_runs_per_profile']}")
+
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
+    save_data(data_out, folder=args['path'], prefix=f'perturb{run_count + 1}_',
+        perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
+        args=args)
+
 def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
     args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
@@ -231,20 +252,22 @@ def main(args=None):
         dev_plot_active=False, args=args)
 
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
-    
+
+    processes = []
+    profiler.start()
     for i in range(args['n_runs_per_profile']*args['n_profiles']):
+        processes.append(Process(target=perturbation_runner,
+            args=(u_init_profiles[:, i] + perturbations[:, i], perturb_positions,
+                du_array, data_out, args, i)))
+        processes[-1].start()
 
-        u_old = u_init_profiles[:, i] + perturbations[:, i]
+    for i in range(len(processes)):
+        processes[i].join()
 
-        print(f'Running perturbation {i + 1}/' + 
-            f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
-            f" {i // args['n_runs_per_profile']}, profile run" +
-            f" {i % args['n_runs_per_profile']}")
-
-        run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
-        save_data(data_out, folder=args['path'], prefix=f'perturb{i + 1}_',
-            perturb_position=perturb_positions[i // args['n_runs_per_profile']],
-            args=args)
+    
+    profiler.stop()
+    print(profiler.output_text())
+    
 
 if __name__ == "__main__":
     # Define arguments

@@ -54,7 +54,7 @@ if __name__ == "__main__":
     args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
 
     # Define u_old
-    u_old = (initial_k_vec).astype(np.complex128)
+    u_old = (u0*initial_k_vec).astype(np.complex128)
     u_old = np.pad(u_old, pad_width=bd_size, mode='constant')
 
     if args['n_turnovers'] is not None:

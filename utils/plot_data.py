@@ -44,11 +44,11 @@ def plot_shells_vs_time(k_vectors_to_plot=None):
     axes[1].set_xlabel('Time', fontsize=12)
     axes[1].set_ylabel('Velocity', fontsize=12)
     axes[1].set_title('Imaginary part')
-    axes[1].set_title(f'Shell velocity vs. time')
-    plt.suptitle(f'Parameters: f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    # axes[1].set_title(f'Shell velocity vs. time')
+    # plt.suptitle(f'Parameters: f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
     plt.legend(legend, loc="center right", bbox_to_anchor=(1.6, 0.5))
     plt.subplots_adjust(left=0.086, right=0.805, wspace=0.3)
-    plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    # plt.suptitle(f'Shell velocity vs. time; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
 
     # handles, labels = axes[1].get_legend_handles_labels()
     # plt.figlegend(handles, labels, loc='center right', bbox_to_anchor=(1.0, 0.5))
@@ -103,6 +103,50 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
             plt.plot(header_dict['perturb_pos']/sample_rate*dt,
                 energy_vs_time[int(header_dict['perturb_pos'])], marker='o')
 
+def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit=None,
+        path=None):
+    # Plot total energy vs time
+    energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real, axis=1)
+    ax.plot(time.real, energy_vs_time, 'k')
+    ax.set_xlabel('Time')
+    ax.set_ylabel('Energy')
+
+    if omit == 'ny':
+        ax.set_title(f'Energy over time vs $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
+    elif omit == 'n_f':
+        ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    else:
+        ax.set_title(f'Energy over time; f={header_dict["f"]}'+
+            f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+            f', time={header_dict["time"]}s')
+    
+    if path is not None:
+        # file_names = list(Path(path).glob('*.csv'))
+        # Find reference file
+        # ref_file_index = None
+        # for ifile, file in enumerate(file_names):
+        #     file_name = file.stem
+        #     if file_name.find('ref') >= 0:
+        #         ref_file_index = ifile
+        
+        # if ref_file_index is None:
+        #     raise ValueError('No reference file found in specified directory')
+
+        perturb_file_names = list(Path(args['path'], args['perturb_folder']).
+            glob('*.csv'))
+
+        for ifile, file_name in enumerate(perturb_file_names):
+            # if ifile == ref_file_index:
+            #     continue
+            header_dict = import_header(file_name=file_name)
+            # print("header_dict['perturb_pos']", header_dict['perturb_pos'])
+            # print(energy_vs_time.shape)
+            # print("header_dict['perturb_pos']", header_dict['perturb_pos'])
+            # print("energy_vs_time[int(header_dict['perturb_pos'])]", energy_vs_time[int(header_dict['perturb_pos'])])
+            # input()
+            plt.plot(np.ones(n_k_vec)*header_dict['perturb_pos']/sample_rate*dt,
+                energy_vs_time[int(header_dict['perturb_pos'])], 'o')
+
 def plot_eddies():
     n_eddies = 20
     plt.figure()
@@ -122,7 +166,8 @@ def plot_eddies():
     # plt.legend(legend, loc='center right', bbox_to_anchor=(1.05, 0.5))
     plt.suptitle(f'u eddies; f={forcing}, ny={ny}, runs={Nt}')
 
-def analyse_eddie_turnovertime(u_store, header_dict, axes):
+def analyse_eddie_turnovertime(u_store, header_dict, args=None):
+    fig, axes = plt.subplots(nrows=2, ncols=1)
     # Calculate mean eddy turnover time
     mean_u_norm = np.mean(np.sqrt(u_store*np.conj(u_store)).real, axis=0)
     mean_eddy_turnover = 1/(k_vec_temp*mean_u_norm)
@@ -143,7 +188,23 @@ def analyse_eddie_turnovertime(u_store, header_dict, axes):
     axes[0].legend()
     axes[0].set_xlabel('k')
     axes[0].set_ylabel('Eddy frequency')
-    axes[0].set_title('Eddy frequencies vs k')
+    axes[0].set_title('Eddy frequencies vs k; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+
+    axes[1].plot(k_vec_temp, mean_eddy_turnover, 'k.', label='Eddy turnover time from $||u||$')
+    axes[1].plot(k_vec_temp, k_vec_temp**(-2/3), 'k--', label='$k^{-2/3}$')
+    axes[1].set_yscale('log')
+    axes[1].set_xscale('log')
+    axes[1].grid()
+    axes[1].legend()
+    axes[1].set_xlabel('k')
+    axes[1].set_ylabel('Eddy turnover time')
+    axes[1].set_title('Eddy turnover time vs k; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+
+
 
     # fig, axes = plt.subplots(5, 4, sharex=True)
     # axes = axes.reshape((1, u_store.shape[1]))[0]
@@ -195,7 +256,7 @@ def plots_related_to_energy(args=None):
     figs = []
     axes = []
 
-    num_plots = 2
+    num_plots = 3
 
     for i in range(num_plots):
         fig = plt.figure()
@@ -211,9 +272,11 @@ def plots_related_to_energy(args=None):
         u_store = data_in[:, 1:]
 
         # Conserning ny
-        plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
-        plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
-            omit='ny', path=args['path'])
+        # plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
+        # plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
+        #     omit='ny', path=args['path'])
+        plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax = axes[2],
+            path=args['path'])
         legend_ny.append(f'$\\nu$ = {header_dict["ny"]}')
 
     # Plot Kolmogorov scaling
@@ -263,15 +326,15 @@ def plots_related_to_forcing():
     axes[0].legend(legend_forcing)
     axes[1].legend(legend_forcing)
 
-def plot_eddie_freqs(axes):
+def plot_eddie_freqs(args=None):
     # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, old_header=False)
+        data_in, header_dict = import_data(file_name, skip_lines=args['burn_in_lines'])
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
-        analyse_eddie_turnovertime(u_store, header_dict, axes)
+        analyse_eddie_turnovertime(u_store, header_dict, args=args)
     
 def analyse_error_norm_vs_time(u_stores):
 
@@ -577,20 +640,18 @@ if __name__ == "__main__":
         'Arguments needed for plotting the perturbation vs time plot.')
     perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
     perturb_parser.add_argument("--n_files", default=1, type=int)
-    eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
-        'Arguments needed for plotting 3D eigenmode analysis.')
-    eigen_mode_parser.add_argument("--burn_in_time",
+    # eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
+    #     'Arguments needed for plotting 3D eigenmode analysis.')
+    arg_parser.add_argument("--burn_in_time",
                                    default=0.0,
-                                   required=True,
                                    type=float)
-    eigen_mode_parser.add_argument("--n_profiles",
-                                   default=1,
-                                   required=True,
-                                   type=int)
-    eigen_mode_parser.add_argument("--n_runs_per_profile",
+    arg_parser.add_argument("--n_profiles",
                                    default=1,
                                    type=int)
-    eigen_mode_parser.add_argument("--time_to_run",
+    arg_parser.add_argument("--n_runs_per_profile",
+                                   default=1,
+                                   type=int)
+    arg_parser.add_argument("--time_to_run",
                                    default=0.1,
                                    type=float)
 
@@ -611,7 +672,7 @@ if __name__ == "__main__":
 
     # Perform plotting
     if "shells_vs_time" in args['plot_type']:
-        plot_shells_vs_time()
+        plot_shells_vs_time([0, 1, 2])
     
     if "2D_eddies" in args['plot_type']:
         plot_eddies()
@@ -620,8 +681,7 @@ if __name__ == "__main__":
         plot_eddy_vel_histograms()
 
     if "eddie_freqs" in args['plot_type']:
-        axes = [plt.axes()]
-        plot_eddie_freqs(axes)
+        plot_eddie_freqs(args=args)
     
     if "energy_plots" in args['plot_type']:
         plots_related_to_energy(args=args)

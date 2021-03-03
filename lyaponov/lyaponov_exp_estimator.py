@@ -4,7 +4,7 @@ from math import floor, log10
 import argparse
 from pathlib import Path
 import numpy as np
-from numba import njit
+from numba import jit, types
 from multiprocessing import Process
 from pyinstrument import Profiler
 import matplotlib.pyplot as plt
@@ -16,9 +16,12 @@ from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
     dev_plot_perturbation_generation
 
 profiler = Profiler()
-
-def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
-        args=None, header=None, perturb_positions=None):
+# @jit((types.Array(types.complex128, 2, 'C', readonly=True),
+#        types.Array(types.complex128, 2, 'C', readonly=False),
+#        types.Array(types.complex128, 2, 'C', readonly=False),
+#        types.boolean, types.int64, types.float64), parallel=True, cache=True)
+def find_eigenvector_for_perturbation(u_init_profiles,
+        dev_plot_active=False, n_profiles=None, local_ny=None):
     """Find the eigenvector corresponding to the minimal of the positive
     eigenvalues of the initial vel. profile.
     
@@ -41,12 +44,11 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
     print('\nFinding the eigenvalues and eigenvectors at the position of the' +
         ' given velocity profiles\n')
 
-    n_profiles = args['n_profiles']
-    e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex)
-
     # Prepare for returning all eigen vectors and values
     e_vector_collection = []
     e_value_collection = []
+
+    e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex)
 
     # Perform the conjugation
     u_init_profiles_conj = u_init_profiles.conj()
@@ -56,15 +58,14 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
     for i in range(n_profiles):
         # Calculate the Jacobian matrix
         J_matrix = np.zeros((n_k_vec, n_k_vec), dtype=np.complex)
-
         # Add k=2 diagonal
         J_matrix += np.diag(
             u_init_profiles_conj[bd_size+1:-bd_size - 1, i], k=2)
         # Add k=1 diagonal
-        J_matrix += factor2*np.diag(np.concatenate(([0],
+        J_matrix += factor2*np.diag(np.concatenate((np.array([0 + 0j]),
             u_init_profiles_conj[bd_size:-bd_size - 2, i])), k=1)
         # Add k=-1 diagonal
-        J_matrix += factor3*np.diag(np.concatenate(([0],
+        J_matrix += factor3*np.diag(np.concatenate((np.array([0 + 0j]),
             u_init_profiles[bd_size:-bd_size - 2, i])), k=-1)
         # Add k=-2 diagonal
         J_matrix += factor3*np.diag(
@@ -72,33 +73,32 @@ def find_eigenvector_for_perturbation(u_init_profiles, dev_plot_active=False,
 
 
         # Add contribution from derivatives of the complex conjugates:
-        J_matrix += np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=1)
-        J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], [0])), k=-1)
+        J_matrix += np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], np.array([0 + 0j]))), k=1)
+        J_matrix += factor2*np.diag(np.concatenate((u_init_profiles[bd_size + 2:-bd_size, i], np.array([0 + 0j]))), k=-1)
 
         J_matrix = J_matrix*prefactor_reshaped
 
         # Add the k=0 diagonal
-        temp_ny = args['ny'] if header is None else header['ny']
-        J_matrix -= np.diag(temp_ny * k_vec_temp**2, k=0)
+        # temp_ny = args['ny'] if header is None else header['ny']
+        J_matrix -= np.diag(local_ny * k_vec_temp**2, k=0)
 
         e_values, e_vectors = np.linalg.eig(J_matrix)
         
         e_vector_collection.append(e_vectors)
         e_value_collection.append(e_values)
 
-        positive_e_values_indices = np.argwhere(e_values.real > 0)
-        largest_positive_e_value_index = np.argmax(e_values[positive_e_values_indices].real)
+        # positive_e_values_indices = np.argwhere(e_values.real > 0)
+        chosen_e_value_index =\
+            np.argmax(e_values.real)
 
-        chosen_e_value_index = positive_e_values_indices[
-            largest_positive_e_value_index]
-
-        e_vector_matrix[:, i:i+1] = e_vectors[:, chosen_e_value_index]
+        e_vector_matrix[:, i] = e_vectors[:, chosen_e_value_index]
+        J_matrix.fill(0 + 0j)
     
-        if dev_plot_active:
-            print('Largest positive eigenvalue', e_values[chosen_e_value_index])
+        # if dev_plot_active:
+        #     print('Largest positive eigenvalue', e_values[chosen_e_value_index])
             
-            dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors,
-                header=header, perturb_pos=perturb_positions[i])
+        #     dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors,
+        #         header=header, perturb_pos=perturb_positions[i])
 
     return e_vector_matrix, e_vector_collection, e_value_collection
 
@@ -241,8 +241,8 @@ def main(args=None):
         print('\nRunning with eigen_perturb\n')
         perturb_e_vectors, _, _ = find_eigenvector_for_perturbation(
             u_init_profiles[:, 0:-1:args['n_runs_per_profile']],
-            dev_plot_active=False, args=args, header=header_dict,
-            perturb_positions=perturb_positions)
+            dev_plot_active=False, n_profiles=args['n_profiles'],
+            local_ny=header_dict['ny'])
     else:
         print('\nRunning without eigen_perturb\n')
         perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),

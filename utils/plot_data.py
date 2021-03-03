@@ -284,14 +284,40 @@ def analyse_error_norm_vs_time(u_stores):
     error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys())))
 
     # for enum, indices in enumerate(combinations):
-        # error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
-        #     - u_stores[indices[1]], axis=1).real
+    #     error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
+    #         - u_stores[indices[1]], axis=1).real
     for i in range(len(u_stores.keys())):
         error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
 
     return error_norm_vs_time
 
-def plot_error_norm_vs_time(args=None):
+def plot_shell_error_vs_time(args=None):
+
+    # Force max on files
+    max_files = 3
+    if args['n_files'] > max_files:
+        args['n_files'] = max_files
+    
+    u_stores, perturb_pos_list, header_dict =\
+        import_perturbation_velocities(args)
+
+    time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
+        dtype=np.float, endpoint=False)
+    
+    for i in range(len(u_stores)):
+        plt.figure()
+        plt.plot(time_array, np.cumsum(np.abs(u_stores[i]), axis=1))
+        plt.xlabel('Time [s]')
+        plt.ylabel('Error')
+        plt.yscale('log')
+        plt.ylim(1e-16, 10)
+        # plt.xlim(0.035, 0.070)
+        plt.legend(k_vec_temp)
+        plt.title(f'Error vs time; f={header_dict["f"]}'+
+            f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+            f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
+
+def import_perturbation_velocities(args=None):
     u_stores = {}
 
     if args['path'] is None:
@@ -327,6 +353,12 @@ def plot_error_norm_vs_time(args=None):
             if ifile + 1 >= args['n_files']:
                 break
 
+    return u_stores, perturb_pos_list, header_dict
+
+def plot_error_norm_vs_time(args=None):
+    
+    u_stores, perturb_pos_list, header_dict =\
+        import_perturbation_velocities(args)
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
@@ -347,8 +379,9 @@ def plot_2D_eigen_mode_analysis(args=None):
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
-            u_init_profiles, dev_plot_active=False, args=args,
-            header=header_dict, perturb_positions=perturb_positions)
+            u_init_profiles, dev_plot_active=False,
+            n_profiles=args['n_profiles'],
+            local_ny=header_dict['ny'])
 
     # exit()
     perturb_pos_list = []
@@ -385,8 +418,9 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
-            u_init_profiles, dev_plot_active=False, args=args,
-            header=header_dict, perturb_positions=perturb_positions)
+            u_init_profiles, dev_plot_active=False,
+            n_profiles=args['n_profiles'],
+            local_ny=header_dict['ny'])
 
     for i in range(len(e_value_collection)):
         sort_id = e_value_collection[i].argsort()[::-1]
@@ -414,8 +448,6 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
     if right_handed:
         ax.set_xlim(n_k_vec, 0)
 
-
-
     fig = plt.figure()
     axes = plt.axes()
     plt.pcolormesh(np.mean(np.abs(e_vector_collection)**2, axis=0), cmap='Reds')
@@ -433,6 +465,104 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
     else:
         plt.colorbar()
 
+def plot_eigen_vector_comparison(args=None):
+    u_init_profiles, perturb_positions, header_dict =\
+        import_start_u_profiles(folder=args['path'], args=args)
+
+    _, e_vector_collection, e_value_collection =\
+        find_eigenvector_for_perturbation(
+            u_init_profiles, dev_plot_active=False,
+            n_profiles=args['n_profiles'],
+            local_ny=header_dict['ny'])
+
+    # Sort eigenvectors
+    for i in range(len(e_value_collection)):
+        sort_id = e_value_collection[i].argsort()[::-1]
+        e_vector_collection[i] = e_vector_collection[i][:, sort_id]
+    
+    e_vector_collection = np.array(e_vector_collection, np.complex128)
+    # current_e_vectors = np.mean(e_vector_collection, axis=0)
+    # current_e_vectors = e_vector_collection[1]
+
+    dev_plot=False
+    
+    integral_mean_lyaponov_index = 8#int(np.average(np.arange(current_e_vectors.shape[1])
+        # , weights=np.abs(current_e_vectors[0, :])))
+    
+    print('integral_mean_lyaponov_index', integral_mean_lyaponov_index)
+
+    orthogonality_array = np.zeros(e_vector_collection.shape[0]*
+        (integral_mean_lyaponov_index - 1), dtype=np.complex128)
+
+    for j in range(e_vector_collection.shape[0]):
+        current_e_vectors = e_vector_collection[j]
+
+        for i in range(1, integral_mean_lyaponov_index):
+            # print(f'{integral_mean_lyaponov_index - i} x'+
+            #     f' {integral_mean_lyaponov_index + i} : ',
+            orthogonality_array[j*(integral_mean_lyaponov_index - 1) + (i - 1)] =\
+                np.vdot(current_e_vectors[:,
+                integral_mean_lyaponov_index - i],
+                current_e_vectors[:, integral_mean_lyaponov_index + i])
+
+            if dev_plot:
+                fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True)
+                legend = []
+
+                recent_plot = axes[0].plot(current_e_vectors[:,
+                    integral_mean_lyaponov_index - i].real, '-')
+                recent_color = recent_plot[0].get_color()
+                axes[0].plot(current_e_vectors.imag[:,
+                    integral_mean_lyaponov_index - i],
+                    linestyle='--', color=recent_color)
+
+                recent_plot = axes[1].plot(current_e_vectors[:, 
+                    integral_mean_lyaponov_index + i].real, '-')
+                recent_color = recent_plot[0].get_color()
+                axes[1].plot(current_e_vectors.imag[:, integral_mean_lyaponov_index + i],
+                    linestyle='--', color=recent_color)
+
+                plt.xlabel('Shell number, i')
+                axes[0].set_ylabel(f'j = {integral_mean_lyaponov_index - i}')
+                axes[1].set_ylabel(f'j = {integral_mean_lyaponov_index + i}')
+                axes[0].legend(['Real part', 'Imag part'], loc="center right",
+                    bbox_to_anchor=(1.15, 0.5))
+                plt.subplots_adjust(right=0.852)
+    
+    if dev_plot:
+        fig = plt.figure()
+        axes = plt.axes()
+        plt.pcolormesh(np.mean(np.abs(e_vector_collection)**2, axis=0), cmap='Reds')
+        plt.xlabel('Lyaponov index')
+        plt.ylabel('Shell number')
+        plt.title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
+            f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+            f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+        plt.xlim(n_k_vec, 0)
+        axes.yaxis.tick_right()
+        axes.yaxis.set_label_position("right")
+        plt.colorbar(pad=0.1)
+
+    # Scatter plot
+    plt.figure()
+    legend = []
+
+    for i in range(integral_mean_lyaponov_index - 1):
+        plt.scatter(orthogonality_array[i:-1:(
+            integral_mean_lyaponov_index - 1)].real,
+            orthogonality_array[i:-1:(
+            integral_mean_lyaponov_index - 1)].imag, marker='.')
+
+        legend.append(f'{integral_mean_lyaponov_index - (i + 1)} x {integral_mean_lyaponov_index + (i + 1)}')
+        
+
+    plt.xlabel('Real part')
+    plt.ylabel('Imag part')
+    plt.legend(legend)
+    plt.title(f'Orthogonality of pairs of eigenvectors; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+
 
 if __name__ == "__main__":
     # Define arguments
@@ -446,7 +576,7 @@ if __name__ == "__main__":
     perturb_parser = subparsers.add_parser("perturb_plot", help=
         'Arguments needed for plotting the perturbation vs time plot.')
     perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
-    perturb_parser.add_argument("--n_files", default=None, type=int)
+    perturb_parser.add_argument("--n_files", default=1, type=int)
     eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
         'Arguments needed for plotting 3D eigenmode analysis.')
     eigen_mode_parser.add_argument("--burn_in_time",
@@ -504,10 +634,19 @@ if __name__ == "__main__":
         else:
             plot_error_norm_vs_time(args=args)
 
+    if "shell_error" in args['plot_type']:
+        if args['path'] is None:
+            print('No path specified to analyse shell error.')
+        else:
+            plot_shell_error_vs_time(args=args)
+
     if "eigen_mode_plot_3D" in args['plot_type']:
         plot_3D_eigen_mode_analysis(args=args)
     
     if "eigen_mode_plot_2D" in args['plot_type']:
         plot_2D_eigen_mode_analysis(args=args)
+
+    if "eigen_vector_comp" in args['plot_type']:
+        plot_eigen_vector_comparison(args=args)
 
     plt.show()

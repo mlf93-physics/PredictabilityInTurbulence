@@ -32,7 +32,7 @@ def import_data(file_name, old_header=False, skip_lines=0, max_rows=None):
 
     # Import data
     data_in = np.genfromtxt(file_name,
-        dtype=np.complex, delimiter=',', skip_header=skip_lines,
+        dtype=np.complex128, delimiter=',', skip_header=skip_lines,
         max_rows=max_rows)
 
     return data_in, header_dict

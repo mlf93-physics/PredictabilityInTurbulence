@@ -134,6 +134,9 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
 
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
+        
+        pert_u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict =\
+            import_perturbation_velocities(args)
 
         for ifile, file_name in enumerate(perturb_file_names):
             # if ifile == ref_file_index:
@@ -144,8 +147,22 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             # print("header_dict['perturb_pos']", header_dict['perturb_pos'])
             # print("energy_vs_time[int(header_dict['perturb_pos'])]", energy_vs_time[int(header_dict['perturb_pos'])])
             # input()
-            plt.plot(np.ones(n_k_vec)*header_dict['perturb_pos']/sample_rate*dt,
+            point_plot = plt.plot(np.ones(n_k_vec)*header_dict['perturb_pos']/sample_rate*dt,
                 energy_vs_time[int(header_dict['perturb_pos'])], 'o')
+
+            if ifile in [0, 2, 4, 7]:
+                time_array = np.linspace(0, header_dict['time'],
+                    int(header_dict['time']*sample_rate/dt),
+                    dtype=np.float, endpoint=False)
+                print('ifile', ifile, type(ifile))
+                perturbation_energy_vs_time = np.cumsum(((
+                    pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
+                    int(header_dict['perturb_pos']) + int(header_dict['N_data']), :]) *
+                    np.conj(pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
+                    int(header_dict['perturb_pos']) + int(header_dict['N_data']), :])).real, axis=1)
+                ax.plot(time_array + perturb_pos_list[ifile],
+                    perturbation_energy_vs_time, color=point_plot[0].get_color())
+
 
 def plot_eddies():
     n_eddies = 20
@@ -400,6 +417,7 @@ def import_perturbation_velocities(args=None):
     perturb_file_names = list(Path(args['path'], args['perturb_folder']).
         glob('*.csv'))
 
+    perturb_pos_list_legend = []
     perturb_pos_list = []
     for ifile, file_name in enumerate(perturb_file_names):
         data_in, header_dict = import_data(file_name)
@@ -409,18 +427,19 @@ def import_perturbation_velocities(args=None):
         
 
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
-        perturb_pos_list.append(
+        perturb_pos_list.append(header_dict["perturb_pos"]/sample_rate*dt)
+        perturb_pos_list_legend.append(
             f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.2f}s')
         
-        if args['n_files'] is not None:
+        if args['n_files'] is not None and args['n_files'] >= 0:
             if ifile + 1 >= args['n_files']:
                 break
 
-    return u_stores, perturb_pos_list, header_dict
+    return u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict
 
 def plot_error_norm_vs_time(args=None):
     
-    u_stores, perturb_pos_list, header_dict =\
+    u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
@@ -431,7 +450,7 @@ def plot_error_norm_vs_time(args=None):
     plt.xlabel('Time [s]')
     plt.ylabel('Error')
     plt.yscale('log')
-    plt.legend(perturb_pos_list)
+    plt.legend(perturb_pos_list_legend)
     plt.title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
@@ -639,7 +658,7 @@ if __name__ == "__main__":
     perturb_parser = subparsers.add_parser("perturb_plot", help=
         'Arguments needed for plotting the perturbation vs time plot.')
     perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
-    perturb_parser.add_argument("--n_files", default=1, type=int)
+    perturb_parser.add_argument("--n_files", default=-1, type=int)
     # eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
     #     'Arguments needed for plotting 3D eigenmode analysis.')
     arg_parser.add_argument("--burn_in_time",

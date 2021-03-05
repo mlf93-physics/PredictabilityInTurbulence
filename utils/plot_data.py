@@ -150,7 +150,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             point_plot = plt.plot(np.ones(n_k_vec)*header_dict['perturb_pos']/sample_rate*dt,
                 energy_vs_time[int(header_dict['perturb_pos'])], 'o')
 
-            if ifile in [0, 2, 4, 7]:
+            if ifile in [0, 1, 2]:
                 time_array = np.linspace(0, header_dict['time'],
                     int(header_dict['time']*sample_rate/dt),
                     dtype=np.float, endpoint=False)
@@ -378,7 +378,7 @@ def plot_shell_error_vs_time(args=None):
     if args['n_files'] > max_files:
         args['n_files'] = max_files
     
-    u_stores, perturb_pos_list, header_dict =\
+    u_stores, _, perturb_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
 
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
@@ -386,7 +386,7 @@ def plot_shell_error_vs_time(args=None):
     
     for i in range(len(u_stores)):
         plt.figure()
-        plt.plot(time_array, np.cumsum(np.abs(u_stores[i]), axis=1))
+        plt.plot(time_array, np.abs(u_stores[i]))#, axis=1))
         plt.xlabel('Time [s]')
         plt.ylabel('Error')
         plt.yscale('log')
@@ -566,7 +566,7 @@ def plot_eigen_vector_comparison(args=None):
     # current_e_vectors = np.mean(e_vector_collection, axis=0)
     # current_e_vectors = e_vector_collection[1]
 
-    dev_plot=False
+    dev_plot=True
     
     integral_mean_lyaponov_index = 8#int(np.average(np.arange(current_e_vectors.shape[1])
         # , weights=np.abs(current_e_vectors[0, :])))
@@ -610,6 +610,9 @@ def plot_eigen_vector_comparison(args=None):
                 axes[0].legend(['Real part', 'Imag part'], loc="center right",
                     bbox_to_anchor=(1.15, 0.5))
                 plt.subplots_adjust(right=0.852)
+                plt.suptitle(f'Eigenvector comparison; f={header_dict["f"]}'+
+                f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+                f', time={header_dict["time"]}s')
     
     if dev_plot:
         fig = plt.figure()

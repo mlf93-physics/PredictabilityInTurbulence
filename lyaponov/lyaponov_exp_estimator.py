@@ -235,6 +235,8 @@ def main(args=None):
     # Make perturbations
     u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
         args=args)
+    # Save parameters to args dict:
+    args['ny'] = header_dict['ny']
 
 
     if args['eigen_perturb']:
@@ -276,7 +278,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--path", nargs='?', type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
-    arg_parser.add_argument("--ny_n", default=19, type=int)
+    # arg_parser.add_argument("--ny_n", default=19, type=int)
     arg_parser.add_argument("--n_runs_per_profile", default=1, type=int)
     arg_parser.add_argument("--n_profiles", default=1, type=int)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
@@ -284,7 +286,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     args = vars(arg_parser.parse_args())
 
-    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
+    # args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
 
     print('args', args)
 

@@ -243,7 +243,7 @@ def main(args=None):
         args=args)
     # Save parameters to args dict:
     args['ny'] = header_dict['ny']
-    args['forcing'] = 0#header_dict['f']
+    args['forcing'] = header_dict['f'].real
     if args['forcing'] == 0:
         args['ny_n'] = 0
     else:    
@@ -260,7 +260,9 @@ def main(args=None):
         print('\nRunning without eigen_perturb\n')
         perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),
             dtype=np.complex128)
-    
+
+    if args['single_shell_perturb'] is not None:
+        print('\nRunning in single shell perturb mode\n')
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 

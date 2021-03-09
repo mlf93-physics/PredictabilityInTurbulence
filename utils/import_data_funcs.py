@@ -18,6 +18,8 @@ def import_header(folder="", file_name=None, old_header=False):
         splitted_item = item.split("=")
         if splitted_item[0] == "f":
             header_dict[splitted_item[0]] = np.complex(splitted_item[1])
+        elif splitted_item[1] == "None":
+            header_dict[splitted_item[0]] = None
         else:
             header_dict[splitted_item[0]] = float(splitted_item[1])
 

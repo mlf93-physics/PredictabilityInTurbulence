@@ -104,7 +104,7 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
                 energy_vs_time[int(header_dict['perturb_pos'])], marker='o')
 
 def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit=None,
-        path=None):
+        path=None, args=None):
     # Plot total energy vs time
     energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real, axis=1)
     ax.plot(time.real, energy_vs_time, 'k')
@@ -150,18 +150,21 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             point_plot = plt.plot(np.ones(n_k_vec)*header_dict['perturb_pos']/sample_rate*dt,
                 energy_vs_time[int(header_dict['perturb_pos'])], 'o')
 
-            if ifile in [0, 1, 2]:
-                time_array = np.linspace(0, header_dict['time'],
-                    int(header_dict['time']*sample_rate/dt),
-                    dtype=np.float64, endpoint=False)
-                print('ifile', ifile, type(ifile))
-                perturbation_energy_vs_time = np.cumsum(((
-                    pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
-                    int(header_dict['perturb_pos']) + int(header_dict['N_data']), :]) *
-                    np.conj(pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
-                    int(header_dict['perturb_pos']) + int(header_dict['N_data']), :])).real, axis=1)
-                ax.plot(time_array + perturb_pos_list[ifile],
-                    perturbation_energy_vs_time, color=point_plot[0].get_color())
+        
+            time_array = np.linspace(0, header_dict['time'],
+                int(header_dict['time']*sample_rate/dt),
+                dtype=np.float64, endpoint=False)
+            
+            perturbation_energy_vs_time = np.cumsum(((
+                pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
+                int(header_dict['perturb_pos']) + int(header_dict['N_data']), :]) *
+                np.conj(pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
+                int(header_dict['perturb_pos']) + int(header_dict['N_data']), :])).real, axis=1)
+            ax.plot(time_array + perturb_pos_list[ifile],
+                perturbation_energy_vs_time, color=point_plot[0].get_color())
+            
+            if ifile + 1 >= args['n_files'] and args['n_files'] > 0:
+                break
 
 
 def plot_eddies():
@@ -289,11 +292,11 @@ def plots_related_to_energy(args=None):
         u_store = data_in[:, 1:]
 
         # Conserning ny
-        plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
-        plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
-            omit='ny', path=args['path'])
+        # plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
+        # plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
+        #     omit='ny', path=args['path'])
         plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax = axes[2],
-            path=args['path'])
+            path=args['path'], args=args)
         legend_ny.append(f'$\\nu$ = {header_dict["ny"]}')
 
     # Plot Kolmogorov scaling
@@ -353,21 +356,24 @@ def plot_eddie_freqs(args=None):
 
         analyse_eddie_turnovertime(u_store, header_dict, args=args)
     
-def analyse_error_norm_vs_time(u_stores):
+def analyse_error_norm_vs_time(u_stores, args=None):
 
     if len(u_stores.keys()) == 0:
         raise IndexError('Not enough u_store arrays to compare.')
 
-    # combinations = [[j, i] for j in range(len(u_stores.keys()))
-    #     for i in range(j + 1) if j != i]
-    # error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
-    error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys())))
+    if args['combinations']:
+        combinations = [[j, i] for j in range(len(u_stores.keys()))
+            for i in range(j + 1) if j != i]
+        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
 
-    # for enum, indices in enumerate(combinations):
-    #     error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
-    #         - u_stores[indices[1]], axis=1).real
-    for i in range(len(u_stores.keys())):
-        error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
+        for enum, indices in enumerate(combinations):
+            error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
+                - u_stores[indices[1]], axis=1).real
+    else:
+        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys())))
+
+        for i in range(len(u_stores.keys())):
+            error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
 
     return error_norm_vs_time
 
@@ -442,18 +448,30 @@ def plot_error_norm_vs_time(args=None):
     u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
 
-    error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
+    error_norm_vs_time = analyse_error_norm_vs_time(u_stores, args=args)
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
         dtype=np.float64, endpoint=False)
 
-    plt.plot(time_array, error_norm_vs_time)
-    plt.xlabel('Time [s]')
-    plt.ylabel('Error')
-    plt.yscale('log')
-    plt.legend(perturb_pos_list_legend)
-    plt.title(f'Error vs time; f={header_dict["f"]}'+
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True)
+    axes[0].plot(time_array, error_norm_vs_time)
+    axes[0].set_xlabel('Time [s]')
+    axes[0].set_ylabel('Error')
+    axes[0].set_yscale('log')
+    axes[0].legend(perturb_pos_list_legend)
+    axes[0].set_title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
+    
+    # Plot energy below
+    ref_file_name = list(Path(args['path']).glob('*.csv'))
+    data_in, ref_header_dict = import_data(ref_file_name[0],
+        skip_lines=int(header_dict['perturb_pos']) + 1,
+        max_rows=int(header_dict['N_data']))
+    
+    plot_inviscid_quantities(time_array, data_in[:, 1:], ref_header_dict,
+        ax = axes[1])
+
 
 def plot_2D_eigen_mode_analysis(args=None):
     u_init_profiles, perturb_positions, header_dict =\
@@ -648,6 +666,34 @@ def plot_eigen_vector_comparison(args=None):
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
+def plot_error_energy_spectrum_vs_time_2D(args=None):
+    ref_file_name = list(Path(args['path']).glob('*.csv'))[0]
+    perturb_file_names = list(Path(args['path'], args['perturb_folder']).
+        glob('*.csv'))
+
+    data_in, header_dict = import_data(perturb_file_names[0])
+    ref_data_in, ref_header_dict = import_data(ref_file_name,
+        skip_lines=int(header_dict['perturb_pos']) + 1,
+        max_rows=int(header_dict['N_data']))
+
+    n_divisions = 10
+    error_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+
+    for i, data_index in enumerate(range(0,
+            int(header_dict['N_data']), int(header_dict['N_data']//n_divisions))):
+        error_spectra[i, :] = np.abs(ref_data_in[data_index, 1:] -\
+            data_in[data_index, 1:]).real
+    
+    plt.plot(np.arange(0, n_k_vec), error_spectra.T)
+    plt.plot(np.arange(0, n_k_vec), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
+    plt.yscale('log')
+    legend = [f'{item/sample_rate*dt:.1f}' for item in range(0,
+            int(header_dict['N_data']),
+            int(header_dict['N_data']//n_divisions))]
+    plt.legend(legend)
+    plt.xlabel('Shell number')
+    plt.ylabel('$u_n - u^{\'}_n$')
+
 
 if __name__ == "__main__":
     # Define arguments
@@ -662,6 +708,7 @@ if __name__ == "__main__":
         'Arguments needed for plotting the perturbation vs time plot.')
     perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
     perturb_parser.add_argument("--n_files", default=-1, type=int)
+    perturb_parser.add_argument("--combinations", action='store_true')
     # eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
     #     'Arguments needed for plotting 3D eigenmode analysis.')
     arg_parser.add_argument("--burn_in_time",
@@ -715,6 +762,9 @@ if __name__ == "__main__":
             print('No path specified to analyse error norms.')
         else:
             plot_error_norm_vs_time(args=args)
+    
+    if "error_spectrum_vs_time" in args['plot_type']:
+        plot_error_energy_spectrum_vs_time_2D(args=args)
 
     if "shell_error" in args['plot_type']:
         if args['path'] is None:

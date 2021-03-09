@@ -8,7 +8,6 @@ dt = 1e-7
 sample_rate = 1/1000
 n_k_vec = 20
 bd_size = 2
-forcing = 0
 n_forcing = 0
 u0 = 1
 

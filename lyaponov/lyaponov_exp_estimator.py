@@ -48,7 +48,7 @@ def find_eigenvector_for_perturbation(u_init_profiles,
     e_vector_collection = []
     e_value_collection = []
 
-    e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex)
+    e_vector_matrix = np.zeros((n_k_vec, n_profiles), dtype=np.complex128)
 
     # Perform the conjugation
     u_init_profiles_conj = u_init_profiles.conj()
@@ -57,7 +57,7 @@ def find_eigenvector_for_perturbation(u_init_profiles,
     # Perform calculation for all u_profiles
     for i in range(n_profiles):
         # Calculate the Jacobian matrix
-        J_matrix = np.zeros((n_k_vec, n_k_vec), dtype=np.complex)
+        J_matrix = np.zeros((n_k_vec, n_k_vec), dtype=np.complex128)
         # Add k=2 diagonal
         J_matrix += np.diag(
             u_init_profiles_conj[bd_size+1:-bd_size - 1, i], k=2)
@@ -123,16 +123,22 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
     n_profiles = args['n_profiles']
     n_runs_per_profile = args['n_runs_per_profile']
     perturbations = np.zeros((n_k_vec + 2*bd_size, n_profiles*
-        n_runs_per_profile), dtype=np.complex)
+        n_runs_per_profile), dtype=np.complex128)
 
     # Perform perturbation for all eigenvectors
     for i in range(n_profiles*n_runs_per_profile):
         # Generate random error
         error = np.random.rand(2*n_k_vec).astype(np.float64)*2 - 1
-        # Reshape into complex array
-        perturb = np.empty(n_k_vec, dtype=np.complex)
-        perturb.real = error[:n_k_vec]
-        perturb.imag = error[n_k_vec:]
+        # Apply single shell perturbation
+        if args['single_shell_perturb'] is not None:
+            perturb = np.zeros(n_k_vec, dtype=np.complex128)
+            perturb.real[args['single_shell_perturb']] = error[0]
+            perturb.imag[args['single_shell_perturb']] = error[1]
+        else:
+            # Reshape into complex array
+            perturb = np.empty(n_k_vec, dtype=np.complex128)
+            perturb.real = error[:n_k_vec]
+            perturb.imag = error[n_k_vec:]
         # Copy array for plotting
         perturb_temp = np.copy(perturb)
         
@@ -199,11 +205,11 @@ def import_start_u_profiles(folder=None, args=None):
     
     # Prepare u_init_profiles matrix
     u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles*
-        n_runs_per_profile), dtype=np.complex)
+        n_runs_per_profile), dtype=np.complex128)
     # Import velocity profiles
     for i, position in enumerate(positions):
         temp_u_init_profile = np.genfromtxt(file_name,
-            dtype=np.complex, delimiter=',',
+            dtype=np.complex128, delimiter=',',
             skip_header=np.int64(1 + position + burn_in*args['burn_in_lines']),
             max_rows=1)
         
@@ -222,8 +228,8 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
         f" {run_count // args['n_runs_per_profile']}, profile run" +
         f" {run_count % args['n_runs_per_profile']}")
-
-    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
+    print("args['forcing']", args['forcing'])
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
     save_data(data_out, folder=args['path'], prefix=f'perturb{run_count + 1}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
@@ -237,6 +243,11 @@ def main(args=None):
         args=args)
     # Save parameters to args dict:
     args['ny'] = header_dict['ny']
+    args['forcing'] = 0#header_dict['f']
+    if args['forcing'] == 0:
+        args['ny_n'] = 0
+    else:    
+        args['ny_n'] = int(3/8*log10(args['forcing']/(header_dict['ny']**2))/log10(lambda_const))
 
 
     if args['eigen_perturb']:
@@ -248,7 +259,7 @@ def main(args=None):
     else:
         print('\nRunning without eigen_perturb\n')
         perturb_e_vectors = np.ones((n_k_vec, args['n_profiles']),
-            dtype=np.complex)
+            dtype=np.complex128)
     
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
@@ -284,6 +295,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--start_time", nargs='+', type=float)
     arg_parser.add_argument("--eigen_perturb", action='store_true')
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
+    arg_parser.add_argument("--single_shell_perturb", default=None, type=int)
     args = vars(arg_parser.parse_args())
 
     # args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)

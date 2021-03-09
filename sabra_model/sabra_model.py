@@ -13,8 +13,8 @@ profiler = Profiler()
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 2, 'C', readonly=False),
-       types.int64, types.float64), cache=True)
-def run_model(u_old, du_array, data_out, Nt, ny):
+       types.int64, types.float64, types.float64), cache=False)
+def run_model(u_old, du_array, data_out, Nt, ny, forcing):
     """Execute the integration of the sabra shell model.
     
     Parameters
@@ -38,7 +38,7 @@ def run_model(u_old, du_array, data_out, Nt, ny):
             sample_number += 1
         
         # Update u_old
-        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny)
+        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny, forcing=forcing)
 
 
 if __name__ == "__main__": 
@@ -46,12 +46,13 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
     arg_parser.add_argument("--ny_n", default=19, type=int)
+    arg_parser.add_argument("--forcing", default=1, type=float)
     time_group = arg_parser.add_mutually_exclusive_group(required=True)
     time_group.add_argument("--time_to_run", type=float)
     time_group.add_argument("--n_turnovers", type=float)
     args = vars(arg_parser.parse_args())
 
-    args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
+    args['ny'] = (args['forcing']/(lambda_const**(8/3*args['ny_n'])))**(1/2) #1e-8
 
     # Define u_old
     u_old = (u0*initial_k_vec).astype(np.complex128)
@@ -68,7 +69,7 @@ if __name__ == "__main__":
 
     profiler.start()
     print('Running sabra model for {:.2f}s'.format(args["Nt"]*dt))
-    run_model(u_old, du_array, data_out, args['Nt'], args['ny'])
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
     profiler.stop()
     print(profiler.output_text())
     save_data(data_out, folder='data', args=args)

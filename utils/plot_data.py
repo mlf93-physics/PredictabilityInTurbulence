@@ -153,7 +153,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             if ifile in [0, 1, 2]:
                 time_array = np.linspace(0, header_dict['time'],
                     int(header_dict['time']*sample_rate/dt),
-                    dtype=np.float, endpoint=False)
+                    dtype=np.float64, endpoint=False)
                 print('ifile', ifile, type(ifile))
                 perturbation_energy_vs_time = np.cumsum(((
                     pert_u_stores[ifile] + u_store[int(header_dict['perturb_pos']):
@@ -289,9 +289,9 @@ def plots_related_to_energy(args=None):
         u_store = data_in[:, 1:]
 
         # Conserning ny
-        # plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
-        # plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
-        #     omit='ny', path=args['path'])
+        plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
+        plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
+            omit='ny', path=args['path'])
         plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax = axes[2],
             path=args['path'])
         legend_ny.append(f'$\\nu$ = {header_dict["ny"]}')
@@ -382,7 +382,7 @@ def plot_shell_error_vs_time(args=None):
         import_perturbation_velocities(args)
 
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
-        dtype=np.float, endpoint=False)
+        dtype=np.float64, endpoint=False)
     
     for i in range(len(u_stores)):
         plt.figure()
@@ -444,7 +444,7 @@ def plot_error_norm_vs_time(args=None):
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores)
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
-        dtype=np.float, endpoint=False)
+        dtype=np.float64, endpoint=False)
 
     plt.plot(time_array, error_norm_vs_time)
     plt.xlabel('Time [s]')

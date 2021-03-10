@@ -214,10 +214,16 @@ def import_start_u_profiles(folder=None, args=None):
             max_rows=1)
         
         # Skip time datapoint and pad array with zeros
-        u_init_profiles[bd_size:-bd_size, i:i + n_runs_per_profile] =\
-            np.repeat(np.reshape(temp_u_init_profile[1:],
-                (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
-
+        if n_runs_per_profile == 1:
+            indices = i
+            u_init_profiles[bd_size:-bd_size, indices] =\
+                temp_u_init_profile[1:]
+        elif n_runs_per_profile > 1:
+            indices = np.s_[i:i + n_runs_per_profile:1]
+            u_init_profiles[bd_size:-bd_size, indices] =\
+                np.repeat(np.reshape(temp_u_init_profile[1:],
+                    (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
+    
     return u_init_profiles, positions + burn_in*args['burn_in_lines'], header_dict
 
 def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
@@ -253,7 +259,8 @@ def main(args=None):
     if args['eigen_perturb']:
         print('\nRunning with eigen_perturb\n')
         perturb_e_vectors, _, _ = find_eigenvector_for_perturbation(
-            u_init_profiles[:, 0:-1:args['n_runs_per_profile']],
+            u_init_profiles[:, 0:args['n_profiles']*
+                args['n_runs_per_profile']:args['n_runs_per_profile']],
             dev_plot_active=False, n_profiles=args['n_profiles'],
             local_ny=header_dict['ny'])
     else:
@@ -298,6 +305,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--eigen_perturb", action='store_true')
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--single_shell_perturb", default=None, type=int)
+    arg_parser.add_argument("--start_time_offset", default=None, type=float)
     args = vars(arg_parser.parse_args())
 
     # args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
@@ -305,10 +313,17 @@ if __name__ == "__main__":
     print('args', args)
 
     if args['start_time'] is not None:
-        if args['n_profiles'] > 1:
+        if args['n_profiles'] > 1 and args['start_time_offset'] is None:
             np.testing.assert_equal(len(args['start_time']), args['n_profiles'],
                 'The number of start times do not equal the number of' +
                 ' requested profiles.')
+        elif args['n_profiles'] > 1 and args['start_time_offset'] is not None:
+            np.testing.assert_equal(len(args['start_time']), 1,
+                'Too many start times given')
+            print('Determining starttimes from single starttime value and the'+
+                ' start_time_offset parameter')
+            args['start_time'] = [args['start_time'][0] +
+                args['start_time_offset']*i for i in range(args['n_profiles'])]
         else:
             np.testing.assert_equal(len(args['start_time']), 1,
                 'Too many start times given')

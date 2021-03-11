@@ -85,15 +85,8 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
     if args['path'] is not None:
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
-        # Find reference file
-        # ref_file_index = None
-        # for ifile, file in enumerate(file_names):
-        #     file_name = file.stem
-        #     if file_name.find('ref') >= 0:
-        #         ref_file_index = ifile
         
-        # if ref_file_index is None:
-        #     raise ValueError('No reference file found in specified directory')
+        # Import headers to get perturb positions
         index = []
         for ifile, file_name in enumerate(perturb_file_names):
             header_dict = import_header(file_name=file_name)
@@ -102,6 +95,9 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
                 index.append(header_dict['perturb_pos'] - zero_time_ref)
             else:
                 index.append(header_dict['perturb_pos'])
+            
+            if ifile + 1 >= args['n_files'] and args['n_files'] > 0:
+                break
         
         for idx in sorted(index):
             plt.plot(idx/sample_rate*dt,
@@ -140,7 +136,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
         
-        pert_u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict =\
+        pert_u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
             import_perturbation_velocities(args)
 
         index = []
@@ -163,7 +159,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
                 int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :]) *
                 np.conj(pert_u_stores[ifile] + u_store[int(header_dicts[idx]['perturb_pos']):
                 int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :])).real, axis=1)
-            ax.plot(time_array + perturb_pos_list[idx],
+            ax.plot(time_array + perturb_time_pos_list[idx],
                 perturbation_energy_vs_time, color=point_plot[0].get_color())
             
             if ifile + 1 >= args['n_files'] and args['n_files'] > 0:
@@ -386,7 +382,7 @@ def plot_shell_error_vs_time(args=None):
     if args['n_files'] > max_files:
         args['n_files'] = max_files
     
-    u_stores, _, perturb_pos_list_legend, header_dict =\
+    u_stores, _, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
 
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
@@ -425,8 +421,8 @@ def import_perturbation_velocities(args=None):
     perturb_file_names = list(Path(args['path'], args['perturb_folder']).
         glob('*.csv'))
 
-    perturb_pos_list_legend = []
-    perturb_pos_list = []
+    perturb_time_pos_list_legend = []
+    perturb_time_pos_list = []
     for ifile, file_name in enumerate(perturb_file_names):
         data_in, header_dict = import_data(file_name)
         ref_data_in, ref_header_dict = import_data(ref_file_name[ref_file_index],
@@ -434,22 +430,22 @@ def import_perturbation_velocities(args=None):
             max_rows=int(header_dict['N_data']))
         
         u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
-        perturb_pos_list.append(header_dict["perturb_pos"]/sample_rate*dt)
-        perturb_pos_list_legend.append(
+        perturb_time_pos_list.append(header_dict["perturb_pos"]/sample_rate*dt)
+        perturb_time_pos_list_legend.append(
             f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.3f}s')
         
         if args['n_files'] is not None and args['n_files'] >= 0:
             if ifile + 1 >= args['n_files']:
                 break
 
-    return u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict
+    return u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict
 
 def plot_error_norm_vs_time(args=None):
     
-    u_stores, perturb_pos_list, perturb_pos_list_legend, header_dict =\
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
     
-    ascending_perturb_pos_index = np.argsort(perturb_pos_list)
+    ascending_perturb_pos_index = np.argsort(perturb_time_pos_list)
 
     error_norm_vs_time = analyse_error_norm_vs_time(u_stores, args=args)
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
@@ -457,35 +453,42 @@ def plot_error_norm_vs_time(args=None):
 
     # Sort error norm arrays and pick out specified runs
     error_norm_vs_time = error_norm_vs_time[:, ascending_perturb_pos_index]
-    perturb_pos_list_legend = [perturb_pos_list_legend[i] for
+    perturb_time_pos_list_legend = [perturb_time_pos_list_legend[i] for
         i in ascending_perturb_pos_index]
-    perturb_pos_list = [perturb_pos_list[i] for
+    perturb_time_pos_list = [perturb_time_pos_list[i] for
         i in ascending_perturb_pos_index]
+    
+    # print('ascending_perturb_pos_index', ascending_perturb_pos_index)
+    # print('perturb_time_pos_list', perturb_time_pos_list)
+    # input()
 
     if args['specific_files'] is not None:
-        perturb_pos_list_legend = [perturb_pos_list_legend[i] for
+        perturb_time_pos_list_legend = [perturb_time_pos_list_legend[i] for
             i in args['specific_files']]
         error_norm_vs_time = error_norm_vs_time[:, args['specific_files']]
 
     fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True)
-    axes.plot(time_array, error_norm_vs_time)
+    axes.plot(time_array, error_norm_vs_time, 'k', linewidth=1)
     axes.set_xlabel('Time [s]')
     axes.set_ylabel('Error')
     axes.set_yscale('log')
-    axes.legend(perturb_pos_list_legend)
+    axes.legend(perturb_time_pos_list_legend)
     axes.set_title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
     
+    # print('perturb_time_pos_list', perturb_time_pos_list)
+    
     # Plot energy below
     # ref_file_name = list(Path(args['path']).glob('*.csv'))
     # data_in, ref_header_dict = import_data(ref_file_name[0],
-    #     skip_lines=int(perturb_pos_list[0]) + 1,
-    #     max_rows=int(perturb_pos_list[-1] + header_dict['N_data']))
+    #     skip_lines=int(perturb_time_pos_list[0]*sample_rate/dt) + 1,
+    #     max_rows=int((perturb_time_pos_list[-1] - perturb_time_pos_list[0])*sample_rate/dt + header_dict['N_data']))
     
-    # print('perturb_pos_list[0]', perturb_pos_list[0])
-    # plot_inviscid_quantities(data_in[:, 0], data_in[:, 1:], ref_header_dict,
-    #     ax=axes[1], args=args, zero_time_ref=int(perturb_pos_list[0]*sample_rate/dt))
+    # # print('perturb_time_pos_list[0]', perturb_time_pos_list[0])
+    # plot_inviscid_quantities(data_in[:, 0] - perturb_time_pos_list[0],
+    #     data_in[:, 1:], ref_header_dict, ax=axes[1], args=args,
+    #     zero_time_ref=int(perturb_time_pos_list[0]*sample_rate/dt))
 
 
 def plot_2D_eigen_mode_analysis(args=None):
@@ -499,14 +502,14 @@ def plot_2D_eigen_mode_analysis(args=None):
             local_ny=header_dict['ny'])
 
     # exit()
-    perturb_pos_list = []
+    perturb_time_pos_list = []
     # Sort eigenvalues
     for i in range(len(e_value_collection)):
         sort_id = e_value_collection[i].argsort()[::-1]
         e_value_collection[i] = e_value_collection[i][sort_id]
 
         # Prepare legend
-        perturb_pos_list.append(f'Time: {perturb_positions[i]/sample_rate*dt:.1f}s')
+        perturb_time_pos_list.append(f'Time: {perturb_positions[i]/sample_rate*dt:.1f}s')
 
     e_value_collection = np.array(e_value_collection, dtype=np.complex).T
 
@@ -522,7 +525,7 @@ def plot_2D_eigen_mode_analysis(args=None):
     plt.xlabel('Lyaponov index')
     plt.ylabel('$\sum_{i=0}^j \\lambda_j$ / H')
     plt.ylim(-3, 1.5)
-    plt.legend(perturb_pos_list)
+    plt.legend(perturb_time_pos_list)
     plt.title(f'Cummulative eigenvalues; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s')
@@ -555,6 +558,7 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
     ax.set_xlabel('Lyaponov index, $j$')
     ax.set_ylabel('Shell number, $i$')
     ax.set_zlabel('$<|v_i^j|^2>$')
+    ax.set_zlim(0, 1)
     ax.view_init(elev=27., azim=-21)
     ax.set_title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
@@ -579,6 +583,7 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
         plt.colorbar(pad=0.1)
     else:
         plt.colorbar()
+    plt.clim(0, 1)
 
 def plot_eigen_vector_comparison(args=None):
     u_init_profiles, perturb_positions, header_dict =\

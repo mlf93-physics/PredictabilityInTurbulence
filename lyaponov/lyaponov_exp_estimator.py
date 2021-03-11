@@ -234,7 +234,7 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f"{args['n_profiles']*args['n_runs_per_profile']} | profile" +
         f" {run_count // args['n_runs_per_profile']}, profile run" +
         f" {run_count % args['n_runs_per_profile']}")
-    print("args['forcing']", args['forcing'])
+    
     run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
     save_data(data_out, folder=args['path'], prefix=f'perturb{run_count + 1}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
@@ -270,6 +270,7 @@ def main(args=None):
 
     if args['single_shell_perturb'] is not None:
         print('\nRunning in single shell perturb mode\n')
+
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 

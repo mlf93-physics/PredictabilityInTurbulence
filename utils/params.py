@@ -8,8 +8,8 @@ dt = 1e-7
 sample_rate = 1/1000
 n_k_vec = 20
 bd_size = 2
-forcing = 1     #0.15
 n_forcing = 0
+u0 = 1
 
 # Define factors to be used in the derivative calculation
 factor2 = - epsilon/lambda_const

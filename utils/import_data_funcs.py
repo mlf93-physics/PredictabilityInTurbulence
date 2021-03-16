@@ -18,6 +18,8 @@ def import_header(folder="", file_name=None, old_header=False):
         splitted_item = item.split("=")
         if splitted_item[0] == "f":
             header_dict[splitted_item[0]] = np.complex(splitted_item[1])
+        elif splitted_item[1] == "None":
+            header_dict[splitted_item[0]] = None
         else:
             header_dict[splitted_item[0]] = float(splitted_item[1])
 
@@ -32,7 +34,7 @@ def import_data(file_name, old_header=False, skip_lines=0, max_rows=None):
 
     # Import data
     data_in = np.genfromtxt(file_name,
-        dtype=np.complex, delimiter=',', skip_header=skip_lines,
+        dtype=np.complex128, delimiter=',', skip_header=skip_lines,
         max_rows=max_rows)
 
     return data_in, header_dict

@@ -1,3 +1,4 @@
+import os
 import sys
 sys.path.append('..')
 from math import floor, log10
@@ -5,12 +6,12 @@ import argparse
 from pathlib import Path
 import numpy as np
 from numba import jit, types
-from multiprocessing import Process
+import multiprocessing
 from pyinstrument import Profiler
 import matplotlib.pyplot as plt
 from src.sabra_model.sabra_model import run_model
 from src.params.params import *
-from src.utils.save_data_funcs import save_data
+from src.utils.save_data_funcs import save_data, save_perturb_info
 from src.utils.import_data_funcs import import_header, import_ref_data,\
     import_start_u_profiles
 from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
@@ -144,7 +145,7 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
             perturb.imag = error[n_k_vec:]
         # Copy array for plotting
         perturb_temp = np.copy(perturb)
-        
+
         # Scale random perturbation with the normalised eigenvector
         perturb = perturb*perturb_e_vectors[:, i // n_runs_per_profile]
         # Find scaling factor in order to have the seeked norm of the error
@@ -164,7 +165,7 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
     return perturbations
 
 def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
-    run_count):
+    run_count, perturb_count):
     """Execute the sabra model on one given perturbed u_old profile"""
 
     print(f'Running perturbation {run_count + 1}/' + 
@@ -173,7 +174,7 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f" {run_count % args['n_runs_per_profile']}")
     
     run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
-    save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{run_count + 1}_',
+    save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{perturb_count + 1}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
 
@@ -181,7 +182,7 @@ def main(args=None):
     args['Nt'] = int(args['time_to_run']/dt)
     args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
 
-    # Make perturbations
+    # Import start profiles
     u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(
         args=args)
     
@@ -209,25 +210,62 @@ def main(args=None):
     if args['single_shell_perturb'] is not None:
         print('\nRunning in single shell perturb mode\n')
 
+    # Make perturbations
     perturbations = calculate_perturbations(perturb_e_vectors,
         dev_plot_active=False, args=args)
 
+    # Prepare array for saving
     data_out = np.zeros((int(args['Nt']*sample_rate), n_k_vec + 1), dtype=np.complex128)
 
+    # Detect if other perturbations exist in the perturbation_folder and calculate
+    # perturbation count to start at
+    # Check if path exists
+    expected_path = Path(args['path'], args['perturb_folder'])
+    dir_exists = os.path.isdir(expected_path)
+    if dir_exists:
+        n_perturbation_files = len(list(expected_path.glob('*.csv')))
+    else:
+        n_perturbation_files = 0
+
+    # Prepare and start the perturbation_runner in multiple processes
     processes = []
     profiler.start()
-    for i in range(args['n_runs_per_profile']*args['n_profiles']):
-        processes.append(Process(target=perturbation_runner,
-            args=(u_init_profiles[:, i] + perturbations[:, i], perturb_positions,
-                du_array, data_out, args, i)))
+
+    # Get number of threads
+    cpu_count = multiprocessing.cpu_count()
+
+    # Append processes
+    for j in range(args['n_runs_per_profile']*args['n_profiles']//cpu_count):
+        for i in range(cpu_count):
+            count = j*cpu_count + i
+
+            processes.append(multiprocessing.Process(target=perturbation_runner,
+                args=(u_init_profiles[:, count] + perturbations[:, count], perturb_positions,
+                    du_array, data_out, args, count, count + n_perturbation_files)))
+            processes[-1].start()
+
+        for i in range(len(processes)):
+            processes[i].join()
+        
+        processes = []
+    
+    for i in range(args['n_runs_per_profile']*args['n_profiles'] % cpu_count):
+        count = (args['n_runs_per_profile']*args['n_profiles']//cpu_count)*cpu_count + i
+
+        processes.append(multiprocessing.Process(target=perturbation_runner,
+                args=(u_init_profiles[:, count] + perturbations[:, count], perturb_positions,
+                    du_array, data_out, args, count, count + n_perturbation_files)))
         processes[-1].start()
+
 
     for i in range(len(processes)):
         processes[i].join()
 
-    
     profiler.stop()
     print(profiler.output_text())
+
+
+    save_perturb_info(args=args)
     
 
 if __name__ == "__main__":
@@ -235,7 +273,8 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--source", nargs='+', type=str)
     arg_parser.add_argument("--path", nargs='?', type=str)
-    arg_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
+    arg_parser.add_argument("--perturb_folder", nargs='?', default=None,
+        required=True, type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
     # arg_parser.add_argument("--ny_n", default=19, type=int)

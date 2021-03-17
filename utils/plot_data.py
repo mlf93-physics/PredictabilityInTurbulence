@@ -662,6 +662,40 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
 
+def plot_error_vector_spectrum(args=None):
+    args['n_files'] = 1
+    
+    # Import perturbation data
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
+        import_perturbation_velocities(args)
+
+    args['start_time'] = np.array([perturb_time_pos_list[0]/sample_rate*dt], dtype=np.float64)
+    args['n_profiles'] = len(args['start_time'])
+
+
+    # Import start u profiles at the perturbation
+    u_init_profiles, perturb_positions, header_dict =\
+        import_start_u_profiles(args=args)
+    
+
+    _, e_vector_collection, e_value_collection =\
+        find_eigenvector_for_perturbation(
+            u_init_profiles, dev_plot_active=False,
+            n_profiles=args['n_profiles'],
+            local_ny=header_dict['ny'])
+    
+    error_spectrum = np.linalg.inv(e_vector_collection[0]) @ u_stores[0].T
+
+    # plt.plot(error_spectrum)
+    plt.figure()
+    plt.pcolormesh(np.abs(error_spectrum), cmap='Reds')
+    plt.xlabel('Lyaponov index, j')
+    plt.ylabel('Time')
+    plt.title(f'Error spectrum vs time; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')#, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+    plt.colorbar(label='$|c_j|$')
+
 
 if __name__ == "__main__":
     # Define arguments
@@ -747,5 +781,8 @@ if __name__ == "__main__":
 
     if "eigen_vector_comp" in args['plot_type']:
         plot_eigen_vector_comparison(args=args)
+
+    if "error_vector_spectrum" in args['plot_type']:
+        plot_error_vector_spectrum(args=args)
 
     plt.show()

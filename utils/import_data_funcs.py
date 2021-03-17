@@ -1,6 +1,6 @@
 from pathlib import Path
 import numpy as np
-from util_funcs import match_start_positions_to_ref_file,\
+from src.utils.util_funcs import match_start_positions_to_ref_file,\
     get_sorted_ref_record_names
 from src.params.params import *
 
@@ -231,7 +231,7 @@ def import_start_u_profiles(args=None):
     # Prepare u_init_profiles matrix
     u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles*
         n_runs_per_profile), dtype=np.complex128)
-
+    
     # Import velocity profiles
     for i, file_id in enumerate(ref_file_match.keys()):
         for position in ref_file_match[int(file_id)]:

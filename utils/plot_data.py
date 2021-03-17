@@ -1,3 +1,4 @@
+import os
 import sys
 sys.path.append('..')
 from pathlib import Path
@@ -6,15 +7,15 @@ import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
-from params import *
-from import_data_funcs import import_data, import_header
-from src.lyaponov.lyaponov_exp_estimator import find_eigenvector_for_perturbation,\
-                                    import_start_u_profiles
+from src.params.params import *
+from import_data_funcs import import_data, import_header, import_ref_data,\
+    import_perturbation_velocities, import_start_u_profiles
+from src.lyaponov.lyaponov_exp_estimator import find_eigenvector_for_perturbation
 
 def plot_shells_vs_time(k_vectors_to_plot=None):
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, old_header=False)
+        data_in, header_dict = import_data(file_name)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
@@ -82,7 +83,7 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
     if omit == 'n_f':
         ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
     
-    if args['path'] is not None:
+    if 'perturb_folder' in args:
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
         
@@ -121,7 +122,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]}s')
     
-    if path is not None:
+    if 'perturb_folder' in args:
         # file_names = list(Path(path).glob('*.csv'))
         # Find reference file
         # ref_file_index = None
@@ -281,29 +282,19 @@ def plots_related_to_energy(args=None):
         ax = fig.add_subplot(111)
         figs.append(fig)
         axes.append(ax)
+    
+    # Import reference data
+    time, u_data, header_dict = import_ref_data(args=args)
 
-    legend_ny = []
-
-    for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, old_header=False)
-        time = data_in[:, 0]
-        u_store = data_in[:, 1:]
-
-        # Conserning ny
-        # plot_energy_spectrum(u_store, header_dict, ax = axes[0], omit='ny')
-        # plot_inviscid_quantities(time, u_store, header_dict, ax = axes[1],
-        #     omit='ny', args=args['path'])
-        plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax = axes[2],
-            path=args['path'], args=args)
-        legend_ny.append(f'$\\nu$ = {header_dict["ny"]}')
+    # Conserning ny
+    plot_energy_spectrum(u_data, header_dict, ax = axes[0], omit='ny')
+    plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+        omit='ny', args=args)
+    plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[2],
+        path=args['path'], args=args)
 
     # Plot Kolmogorov scaling
     axes[0].plot(k_vec_temp, k_vec_temp**(-2/3), 'k--')
-    axes[1].legend(legend_ny)
-    
-    legend_ny.append("$k^{-2/3}$")
-    axes[0].legend(legend_ny)
-    
 
     for i in range(num_plots):
         axes[i].grid()
@@ -328,7 +319,7 @@ def plots_related_to_forcing():
     legend_forcing = []
 
     for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, old_header=False)
+        data_in, header_dict = import_data(file_name)
         time = data_in[:, 0]
         u_store = data_in[:, 1:]
 
@@ -354,26 +345,6 @@ def plot_eddie_freqs(args=None):
 
         analyse_eddie_turnovertime(u_store, header_dict, args=args)
     
-def analyse_error_norm_vs_time(u_stores, args=None):
-
-    if len(u_stores.keys()) == 0:
-        raise IndexError('Not enough u_store arrays to compare.')
-
-    if args['combinations']:
-        combinations = [[j, i] for j in range(len(u_stores.keys()))
-            for i in range(j + 1) if j != i]
-        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
-
-        for enum, indices in enumerate(combinations):
-            error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
-                - u_stores[indices[1]], axis=1).real
-    else:
-        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores.keys())))
-
-        for i in range(len(u_stores.keys())):
-            error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
-
-    return error_norm_vs_time
 
 def plot_shell_error_vs_time(args=None):
 
@@ -401,44 +372,26 @@ def plot_shell_error_vs_time(args=None):
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
 
-def import_perturbation_velocities(args=None):
-    u_stores = {}
+def analyse_error_norm_vs_time(u_stores, args=None):
 
-    if args['path'] is None:
-        raise ValueError('No path specified')
-    
-    ref_file_name = list(Path(args['path']).glob('*.csv'))
-    # Find reference file
-    ref_file_index = None
-    for ifile, file in enumerate(ref_file_name):
-        file_name = file.stem
-        if file_name.find('ref') >= 0:
-            ref_file_index = ifile
-    
-    if ref_file_index is None:
-        raise ValueError('No reference file found in specified directory')
+    if len(u_stores) == 0:
+        raise IndexError('Not enough u_store arrays to compare.')
 
-    perturb_file_names = list(Path(args['path'], args['perturb_folder']).
-        glob('*.csv'))
+    if args['combinations']:
+        combinations = [[j, i] for j in range(len(u_stores))
+            for i in range(j + 1) if j != i]
+        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(combinations)))
 
-    perturb_time_pos_list_legend = []
-    perturb_time_pos_list = []
-    for ifile, file_name in enumerate(perturb_file_names):
-        data_in, header_dict = import_data(file_name)
-        ref_data_in, ref_header_dict = import_data(ref_file_name[ref_file_index],
-            old_header=False, skip_lines=int(header_dict['perturb_pos']) + 1,
-            max_rows=int(header_dict['N_data']))
-        
-        u_stores[ifile] = data_in[:, 1:] - ref_data_in[:, 1:]
-        perturb_time_pos_list.append(header_dict["perturb_pos"]/sample_rate*dt)
-        perturb_time_pos_list_legend.append(
-            f'Start time: {header_dict["perturb_pos"]/sample_rate*dt:.3f}s')
-        
-        if args['n_files'] is not None and args['n_files'] >= 0:
-            if ifile + 1 >= args['n_files']:
-                break
+        for enum, indices in enumerate(combinations):
+            error_norm_vs_time[:, enum] = np.linalg.norm(u_stores[indices[0]]
+                - u_stores[indices[1]], axis=1).real
+    else:
+        error_norm_vs_time = np.zeros((u_stores[0].shape[0], len(u_stores)))
 
-    return u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict
+        for i in range(len(u_stores)):
+            error_norm_vs_time[:, i] = np.linalg.norm(u_stores[i], axis=1).real
+
+    return error_norm_vs_time
 
 def plot_error_norm_vs_time(args=None):
     
@@ -451,24 +404,14 @@ def plot_error_norm_vs_time(args=None):
     time_array = np.linspace(0, header_dict['time'], int(header_dict['time']*sample_rate/dt),
         dtype=np.float64, endpoint=False)
 
-    # Sort error norm arrays and pick out specified runs
-    error_norm_vs_time = error_norm_vs_time[:, ascending_perturb_pos_index]
-    perturb_time_pos_list_legend = [perturb_time_pos_list_legend[i] for
-        i in ascending_perturb_pos_index]
-    perturb_time_pos_list = [perturb_time_pos_list[i] for
-        i in ascending_perturb_pos_index]
-    
-    # print('ascending_perturb_pos_index', ascending_perturb_pos_index)
-    # print('perturb_time_pos_list', perturb_time_pos_list)
-    # input()
-
+    # Pick out specified runs
     if args['specific_files'] is not None:
         perturb_time_pos_list_legend = [perturb_time_pos_list_legend[i] for
             i in args['specific_files']]
         error_norm_vs_time = error_norm_vs_time[:, args['specific_files']]
 
     fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True)
-    axes.plot(time_array, error_norm_vs_time, 'k', linewidth=1)
+    axes.plot(time_array, error_norm_vs_time)#, 'k', linewidth=1)
     axes.set_xlabel('Time [s]')
     axes.set_ylabel('Error')
     axes.set_yscale('log')
@@ -493,7 +436,7 @@ def plot_error_norm_vs_time(args=None):
 
 def plot_2D_eigen_mode_analysis(args=None):
     u_init_profiles, perturb_positions, header_dict =\
-        import_start_u_profiles(folder=args['path'], args=args)
+        import_start_u_profiles(args=args)
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
@@ -511,7 +454,7 @@ def plot_2D_eigen_mode_analysis(args=None):
         # Prepare legend
         perturb_time_pos_list.append(f'Time: {perturb_positions[i]/sample_rate*dt:.1f}s')
 
-    e_value_collection = np.array(e_value_collection, dtype=np.complex).T
+    e_value_collection = np.array(e_value_collection, dtype=np.complex128).T
 
     # Calculate Kolmogorov-Sinai entropy, i.e. sum of positive e values 
     positive_e_values_only = np.copy(e_value_collection)
@@ -531,8 +474,8 @@ def plot_2D_eigen_mode_analysis(args=None):
         f', time={header_dict["time"]}s')
 
 def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
-    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
-        args=args)
+    u_init_profiles, perturb_positions, header_dict =\
+        import_start_u_profiles(args=args)
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
@@ -587,7 +530,7 @@ def plot_3D_eigen_mode_analysis(args=None, right_handed=True):
 
 def plot_eigen_vector_comparison(args=None):
     u_init_profiles, perturb_positions, header_dict =\
-        import_start_u_profiles(folder=args['path'], args=args)
+        import_start_u_profiles(args=args)
 
     _, e_vector_collection, e_value_collection =\
         find_eigenvector_for_perturbation(
@@ -687,14 +630,10 @@ def plot_eigen_vector_comparison(args=None):
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
 def plot_error_energy_spectrum_vs_time_2D(args=None):
-    ref_file_name = list(Path(args['path']).glob('*.csv'))[0]
-    perturb_file_names = list(Path(args['path'], args['perturb_folder']).
-        glob('*.csv'))
-
-    data_in, header_dict = import_data(perturb_file_names[0])
-    ref_data_in, ref_header_dict = import_data(ref_file_name,
-        skip_lines=int(header_dict['perturb_pos']) + 1,
-        max_rows=int(header_dict['N_data']))
+    args['n_files'] = 1
+    
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
+        import_perturbation_velocities(args)
 
     n_divisions = 25
     error_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
@@ -707,9 +646,9 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
     # plt.plot(time_linear, time_exp_indices, '.')
     # plt.show()
 
+    perturb_file = 0
     for i, data_index in enumerate(time_exp_indices):
-        error_spectra[i, :] = np.abs(ref_data_in[data_index, 1:] -\
-            data_in[data_index, 1:]).real
+        error_spectra[i, :] = np.abs(u_stores[perturb_file][data_index, :]).real
     
     plt.plot(np.arange(0, n_k_vec), error_spectra.T)
     plt.plot(np.arange(0, n_k_vec), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
@@ -727,11 +666,12 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
 if __name__ == "__main__":
     # Define arguments
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("--source", nargs='+', default=None, type=str)
     arg_parser.add_argument("--path", nargs='?', default=None, type=str)
     arg_parser.add_argument("--plot_type", nargs='+', default=None, type=str)
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
+    arg_parser.add_argument("--specific_ref_records", nargs='+', default=[0], type=int)
+
     subparsers = arg_parser.add_subparsers()
     perturb_parser = subparsers.add_parser("perturb_plot", help=
         'Arguments needed for plotting the perturbation vs time plot.')
@@ -755,6 +695,7 @@ if __name__ == "__main__":
                                    type=float)
 
     args = vars(arg_parser.parse_args())
+    print('args', args)
 
     # Set seed if wished
     if args['seed_mode']:
@@ -764,10 +705,6 @@ if __name__ == "__main__":
         args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
     if 'time_to_run' in args:
         args['Nt'] = int(args['time_to_run']/dt*sample_rate)
-
-    if args['source'] is not None:
-        # Prepare file names
-        file_names = args['source'] if type(args['source']) is list else [args['source']]
 
     # Perform plotting
     if "shells_vs_time" in args['plot_type']:

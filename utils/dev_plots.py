@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from .params import *
+from src.params.params import *
 
 def dev_plot_eigen_mode_analysis(e_values, J_matrix, e_vectors, header=None,
         perturb_pos=None):

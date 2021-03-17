@@ -9,11 +9,14 @@ from multiprocessing import Process
 from pyinstrument import Profiler
 import matplotlib.pyplot as plt
 from src.sabra_model.sabra_model import run_model
-from src.utils.params import *
+from src.params.params import *
 from src.utils.save_data_funcs import save_data
-from src.utils.import_data_funcs import import_header
+from src.utils.import_data_funcs import import_header, import_ref_data,\
+    import_start_u_profiles
 from src.utils.dev_plots import dev_plot_eigen_mode_analysis,\
     dev_plot_perturbation_generation
+from src.utils.util_funcs import match_start_positions_to_ref_file,\
+    get_sorted_ref_record_names
 
 profiler = Profiler()
 # @jit((types.Array(types.complex128, 2, 'C', readonly=True),
@@ -160,72 +163,6 @@ def calculate_perturbations(perturb_e_vectors, dev_plot_active=False,
 
     return perturbations
 
-def import_start_u_profiles(folder=None, args=None):
-    """Import all u profiles to start perturbations from"""
-
-    n_profiles = args['n_profiles']
-    n_runs_per_profile = args['n_runs_per_profile']
-
-    file_names = list(Path(folder).glob('*.csv'))
-    # Find reference file
-    ref_file = None
-    for ifile, file in enumerate(file_names):
-        file_stem = file.stem
-        if file_stem.find('ref') >= 0:
-            ref_file = file.name
-
-    # Import header info
-    header_dict = import_header(folder=folder, file_name=ref_file,
-        old_header=False)
-
-    if args['start_time'] is None:
-        print(f'\nImporting {n_profiles} velocity profiles randomly positioned '+
-        'in reference datafile\n')
-        # Generate random start positions
-        division_size = int(header_dict["N_data"] - args['burn_in_lines'] -
-            args['Nt']*sample_rate)//n_profiles
-        rand_division_start = np.random.randint(low=0, high=division_size,
-            size=n_profiles)
-        positions = np.array([division_size*i + rand_division_start[i] for i in
-            range(n_profiles)])
-
-        burn_in = True
-    else:
-        print(f'\nImporting {n_profiles} velocity profiles positioned as '+
-        'requested in reference datafile\n')
-        positions = np.array(args['start_time'])*sample_rate/dt
-
-        burn_in = False
-
-    print('\nPositions of perturbation start: ', (positions +
-        burn_in*args['burn_in_lines'])/sample_rate*dt, '(in seconds)')
-
-    # Make path to ref file
-    file_name = Path(folder, ref_file)
-    
-    # Prepare u_init_profiles matrix
-    u_init_profiles = np.zeros((n_k_vec + 2*bd_size, n_profiles*
-        n_runs_per_profile), dtype=np.complex128)
-    # Import velocity profiles
-    for i, position in enumerate(positions):
-        temp_u_init_profile = np.genfromtxt(file_name,
-            dtype=np.complex128, delimiter=',',
-            skip_header=np.int64(1 + position + burn_in*args['burn_in_lines']),
-            max_rows=1)
-        
-        # Skip time datapoint and pad array with zeros
-        if n_runs_per_profile == 1:
-            indices = i
-            u_init_profiles[bd_size:-bd_size, indices] =\
-                temp_u_init_profile[1:]
-        elif n_runs_per_profile > 1:
-            indices = np.s_[i:i + n_runs_per_profile:1]
-            u_init_profiles[bd_size:-bd_size, indices] =\
-                np.repeat(np.reshape(temp_u_init_profile[1:],
-                    (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
-    
-    return u_init_profiles, positions + burn_in*args['burn_in_lines'], header_dict
-
 def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
     run_count):
     """Execute the sabra model on one given perturbed u_old profile"""
@@ -236,7 +173,7 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f" {run_count % args['n_runs_per_profile']}")
     
     run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
-    save_data(data_out, folder=args['path'], prefix=f'perturb{run_count + 1}_',
+    save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{run_count + 1}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
 
@@ -245,8 +182,9 @@ def main(args=None):
     args['burn_in_lines'] = int(args['burn_in_time']/dt*sample_rate)
 
     # Make perturbations
-    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(folder=args['path'],
+    u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(
         args=args)
+    
     # Save parameters to args dict:
     args['ny'] = header_dict['ny']
     args['forcing'] = header_dict['f'].real
@@ -297,6 +235,7 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("--source", nargs='+', type=str)
     arg_parser.add_argument("--path", nargs='?', type=str)
+    arg_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
     # arg_parser.add_argument("--ny_n", default=19, type=int)
@@ -307,7 +246,10 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--single_shell_perturb", default=None, type=int)
     arg_parser.add_argument("--start_time_offset", default=None, type=float)
+
     args = vars(arg_parser.parse_args())
+
+    args['ref_run'] = False
 
     # args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
 

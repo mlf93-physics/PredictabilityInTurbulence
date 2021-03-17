@@ -9,5 +9,5 @@ x = np.linspace(0, 10, 10)
 
 # plt.plot(x, times)
 # plt.show()
-print(x)
-print(x[np.s_[0:10:1]])
+s = Path('./data/ny2')
+print(s.name)

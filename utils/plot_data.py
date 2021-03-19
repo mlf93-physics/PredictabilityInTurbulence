@@ -60,10 +60,10 @@ def plot_energy_spectrum(u_store, header_dict, ax = None, omit=None):
     # for i in range(10):
     #     start = i*1000
     #     plt.plot(k_vec_temp, np.mean((u_store[start:(start + 1000)] * np.conj(u_store[start:(start + 1000)])).real, axis=0))
-    ax.plot(k_vec_temp, np.mean((u_store[-u_store.shape[0]//4:] * np.conj(u_store[-u_store.shape[0]//4:])).real, axis=0))
-    ax.set_xscale('log')
+    ax.plot(np.log2(k_vec_temp), np.mean((u_store[-u_store.shape[0]//4:] * np.conj(u_store[-u_store.shape[0]//4:])).real, axis=0))
     ax.set_yscale('log')
     ax.set_xlabel('k')
+    ax.set_ylim(1e-15, 1)
     ax.set_ylabel('Energy')
     if omit == 'ny':
         ax.set_title(f'Energy spectrum vs. $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
@@ -294,7 +294,7 @@ def plots_related_to_energy(args=None):
         path=args['path'], args=args)
 
     # Plot Kolmogorov scaling
-    axes[0].plot(k_vec_temp, k_vec_temp**(-2/3), 'k--')
+    axes[0].plot(np.log2(k_vec_temp), k_vec_temp**(-2/3), 'k--')
 
     for i in range(num_plots):
         axes[i].grid()
@@ -415,10 +415,11 @@ def plot_error_norm_vs_time(args=None):
     axes.set_xlabel('Time [s]')
     axes.set_ylabel('Error')
     axes.set_yscale('log')
-    axes.legend(perturb_time_pos_list_legend)
+    # axes.legend(perturb_time_pos_list_legend)
     axes.set_title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]} | Folder: {args["perturb_folder"]}')
+        f', time={header_dict["time"]} | Folder: {args["perturb_folder"]};' +
+        f'Files: {args["file_offset"]}-{args["file_offset"] + args["n_files"]}')
     
     # print('perturb_time_pos_list', perturb_time_pos_list)
     
@@ -630,31 +631,57 @@ def plot_eigen_vector_comparison(args=None):
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
 def plot_error_energy_spectrum_vs_time_2D(args=None):
-    args['n_files'] = 1
+    # args['n_files'] = 1
     
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
 
-    n_divisions = 25
-    error_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+    n_files = len(perturb_time_pos_list)
+
+    n_divisions = 10
+    error_spectra = np.zeros((n_files, n_divisions, n_k_vec), dtype=np.float64)
 
     # Prepare exponential time indices
     time_linear = np.linspace(0, 10, n_divisions)
     time_exp_indices = np.array(header_dict['N_data']/
         np.exp(10)*np.exp(time_linear), dtype=np.int32)
     time_exp_indices[-1] -= 1       # Include endpoint manually
-    # plt.plot(time_linear, time_exp_indices, '.')
-    # plt.show()
 
-    perturb_file = 0
-    for i, data_index in enumerate(time_exp_indices):
-        error_spectra[i, :] = np.abs(u_stores[perturb_file][data_index, :]).real
+    for ifile in range(n_files):
+        for i, data_index in enumerate(time_exp_indices):
+            error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index, :]).real
     
-    plt.plot(np.arange(0, n_k_vec), error_spectra.T)
-    plt.plot(np.arange(0, n_k_vec), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
+    # Calculate mean and std
+    error_mean_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+    error_std_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+    # Find zeros
+    # print('error_spectra before', error_spectra[:, 0, :])
+    
+    error_spectra[np.where(error_spectra == 0)] = np.nan
+
+    # print('error_spectra after', error_spectra[:, 0, :])
+
+    for i, data_index in enumerate(time_exp_indices):
+        # print('error_spectra[:, i, :]', error_spectra[:, i, :], error_spectra[:, i, :].shape)
+        # input()
+        error_mean_spectra[i, :] = np.nanmean(error_spectra[:, i, :], axis=0)
+        error_std_spectra[i, :] = np.nanstd(error_spectra[:, i, :], axis=0)
+
+    # error_mean_spectra[np.where(error_mean_spectra == np.nan)] = 0.0
+    error_mean_spectra[0, :] = error_spectra[0, 0, :]
+    temp_plot = plt.plot(np.log2(k_vec_temp), error_mean_spectra.T)
+
+    # for i in range(n_divisions):
+    #     # print('error_std_spectra[i, :]/error_mean_spectra[i, :]', error_std_spectra[i, :]/error_mean_spectra[i, :])
+    #     # input()
+    #     plt.errorbar(np.log2(k_vec_temp), error_mean_spectra[i, :],
+    #         error_mean_spectra[i, :] + error_std_spectra[i, :]/
+    #         error_mean_spectra[i, :],
+    #         alpha=0.4, color=temp_plot[i].get_color())
+    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
     plt.yscale('log')
     legend = [f'{item/sample_rate*dt:.1e}' for item in time_exp_indices]
-    plt.legend(legend)
+    plt.legend(legend, loc="center right", bbox_to_anchor=(1.6, 0.5))
     plt.xlabel('Shell number')
     plt.ylabel('$u_n - u^{\'}_n$')
     plt.ylim(1e-22, 10)
@@ -664,12 +691,13 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
 
 def plot_error_vector_spectrum(args=None):
     args['n_files'] = 1
+    args['file_offset'] = 160
     
     # Import perturbation data
-    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, perturb_header_dict =\
         import_perturbation_velocities(args)
-
-    args['start_time'] = np.array([perturb_time_pos_list[0]/sample_rate*dt], dtype=np.float64)
+    
+    args['start_time'] = np.array([perturb_time_pos_list[args['file_offset']]/sample_rate*dt], dtype=np.float64)
     args['n_profiles'] = len(args['start_time'])
 
 
@@ -684,17 +712,47 @@ def plot_error_vector_spectrum(args=None):
             n_profiles=args['n_profiles'],
             local_ny=header_dict['ny'])
     
-    error_spectrum = np.linalg.inv(e_vector_collection[0]) @ u_stores[0].T
+    error_spectrum = (np.linalg.inv(e_vector_collection[0]) @ u_stores[0].T).real
+    error_spectrum = error_spectrum/np.linalg.norm(error_spectrum, axis=0)
 
-    # plt.plot(error_spectrum)
+    # n_divisions = 100
+    # for i in range(0, u_stores[0].shape[0], u_stores[0].shape[0]//n_divisions):
+    # fig = plt.figure()
+    # axes = plt.axes()
+    # # normed_error_spectrum = error_spectrum[:, i] / np.linalg.norm(error_spectrum[:, i])
+    # # normed_error_spectrum = np.reshape(normed_error_spectrum, (1, n_k_vec))
+    # # print('normed_error_spectrum', normed_error_spectrum.shape)
+    # # print('e_vector_collection[0]', e_vector_collection[0].shape)
+    # # input()
+    # # print('normed_error_spectrum', normed_error_spectrum.shape)
+    # print('e_vector_collection[0]', e_vector_collection[0].shape, 'error_spectrum', error_spectrum.shape)
+    # scaled_e_vectors = np.abs(e_vector_collection[0]*error_spectrum.T)**2
+    # print('scaled_e_vectors', scaled_e_vectors.shape)
+    # plt.pcolormesh(np.mean(scaled_e_vectors, axis=1), cmap='Reds')
+    # plt.xlabel('Lyaponov index')
+    # plt.ylabel('Shell number')
+    # plt.title(f'Eigenvectors vs shell numbers; f={header_dict["f"]}'+
+    #     f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+    #     f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+    # plt.xlim(n_k_vec, 0)
+    # axes.yaxis.tick_right()
+    # axes.yaxis.set_label_position("right")
+    # plt.colorbar(pad=0.1)
+    # # plt.savefig(f'../figures/week6/error_eigen_value_spectra_2D/error_eigen_value_spectrum_ny{header_dict["ny"]}_time_{i/u_stores[0].shape[0]}.png', format='png')
+    # plt.clim(0, 1)
+
     plt.figure()
+    # time = np.linspace(0, perturb_header_dict['N_data']*dt/sample_rate, 10)
+    # x, y = np.meshgrid(time, np.log2(k_vec_temp))
     plt.pcolormesh(np.abs(error_spectrum), cmap='Reds')
-    plt.xlabel('Lyaponov index, j')
-    plt.ylabel('Time')
-    plt.title(f'Error spectrum vs time; f={header_dict["f"]}'+
-        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}s')#, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
-    plt.colorbar(label='$|c_j|$')
+    plt.xlabel('Time')
+    # plt.xticks(time)
+    plt.ylabel('Lyaponov index, j')
+    plt.title(f'Error spectrum vs time; f={perturb_header_dict["f"]}'+
+        f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
+        f', time={perturb_header_dict["time"]}s')#, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
+    plt.colorbar(label='$|c_j|/||c||$)')
+    plt.savefig(f'../figures/week6/error_eigen_spectra_vs_time_2D/error_eigen_spectra_vs_time_2D_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
 
 
 if __name__ == "__main__":
@@ -711,6 +769,7 @@ if __name__ == "__main__":
         'Arguments needed for plotting the perturbation vs time plot.')
     perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
     perturb_parser.add_argument("--n_files", default=-1, type=int)
+    perturb_parser.add_argument("--file_offset", default=0, type=int)
     perturb_parser.add_argument("--specific_files", nargs='+', default=None, type=int)
     perturb_parser.add_argument("--combinations", action='store_true')
     # eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=

@@ -25,9 +25,12 @@ def import_header(folder="", file_name=None):
         elif splitted_item[1] == "None":
             header_dict[splitted_item[0]] = None
         else:
-            header_dict[splitted_item[0]] = float(splitted_item[1])
+            try:
+                header_dict[splitted_item[0]] = float(splitted_item[1])
+            except:
+                header_dict[splitted_item[0]] = splitted_item[1]
 
-    print('header_dict', header_dict)
+    # print('header_dict', header_dict)
 
     return header_dict
 
@@ -134,7 +137,6 @@ def import_perturbation_velocities(args=None):
     for iperturb_file, perturb_file_name in enumerate(
             perturb_file_names[i] for i in ascending_perturb_pos_index):
 
-        perturb_data_in, perturb_header_dict = import_data(perturb_file_name)
 
         ref_file_match_keys_array = np.array(list(ref_file_match.keys()))
         sum_pert_files = sum([len(ref_file_match[ref_file_index]) for
@@ -143,7 +145,12 @@ def import_perturbation_velocities(args=None):
         if iperturb_file + 1 > sum_pert_files:
             ref_file_counter += 1
             perturb_index = 0
-
+        
+        if iperturb_file < args['file_offset']:
+            perturb_index += 1
+            continue
+        
+        perturb_data_in, perturb_header_dict = import_data(perturb_file_name)
         # Initialise ref_data_in of null size
         ref_data_in = np.array([[]], dtype=np.complex128)
 
@@ -164,12 +171,13 @@ def import_perturbation_velocities(args=None):
             ref_data_in = np.concatenate((ref_data_in, temp_ref_data_in)) if\
                 counter > 0 else temp_ref_data_in
             counter += 1
-                
+        
         # Calculate error array
         u_stores.append(perturb_data_in[:, 1:] - ref_data_in[:, 1:])
         
         if args['n_files'] is not None and args['n_files'] >= 0:
-            if iperturb_file + 1 >= args['n_files']:
+            if iperturb_file + 1 - args['file_offset'] >= args['n_files']:
+                print('iperturb_file', iperturb_file)
                 break
 
         perturb_index += 1
@@ -233,7 +241,8 @@ def import_start_u_profiles(args=None):
         n_runs_per_profile), dtype=np.complex128)
     
     # Import velocity profiles
-    for i, file_id in enumerate(ref_file_match.keys()):
+    counter = 0
+    for file_id in ref_file_match.keys():
         for position in ref_file_match[int(file_id)]:
             temp_u_init_profile = np.genfromtxt(ref_record_names_sorted[int(file_id)],
                 dtype=np.complex128, delimiter=',',
@@ -242,13 +251,15 @@ def import_start_u_profiles(args=None):
             
             # Skip time datapoint and pad array with zeros
             if n_runs_per_profile == 1:
-                indices = i
+                indices = counter
                 u_init_profiles[bd_size:-bd_size, indices] =\
                     temp_u_init_profile[1:]
             elif n_runs_per_profile > 1:
-                indices = np.s_[i:i + n_runs_per_profile:1]
+                indices = np.s_[counter:counter + n_runs_per_profile:1]
                 u_init_profiles[bd_size:-bd_size, indices] =\
                     np.repeat(np.reshape(temp_u_init_profile[1:],
                         (temp_u_init_profile[1:].size, 1)), n_runs_per_profile, axis=1)
-    
+            
+            counter += 1
+
     return u_init_profiles, positions + burn_in*args['burn_in_lines'], ref_header_dict

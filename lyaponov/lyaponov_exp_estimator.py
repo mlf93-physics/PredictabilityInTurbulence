@@ -174,7 +174,7 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f" {run_count % args['n_runs_per_profile']}")
     
     run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
-    save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{perturb_count + 1}_',
+    save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{perturb_count}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
 
@@ -185,14 +185,22 @@ def main(args=None):
     # Import start profiles
     u_init_profiles, perturb_positions, header_dict = import_start_u_profiles(
         args=args)
-    
+     
     # Save parameters to args dict:
-    args['ny'] = header_dict['ny']
     args['forcing'] = header_dict['f'].real
-    if args['forcing'] == 0:
-        args['ny_n'] = 0
-    else:    
-        args['ny_n'] = int(3/8*log10(args['forcing']/(header_dict['ny']**2))/log10(lambda_const))
+    
+    if args['ny_n'] is None:
+        args['ny'] = header_dict['ny']
+
+        if args['forcing'] == 0:
+            args['ny_n'] = 0
+        else:    
+            args['ny_n'] = int(3/8*log10(args['forcing']/(header_dict['ny']**2))/log10(lambda_const))
+        # Take ny from reference file
+    else:
+        args['ny'] = (args['forcing']/(lambda_const**(8/3*args['ny_n'])))**(1/2)
+    
+    print('args', args)
 
 
     if args['eigen_perturb']:
@@ -277,7 +285,7 @@ if __name__ == "__main__":
         required=True, type=str)
     arg_parser.add_argument("--time_to_run", default=0.1, type=float)
     arg_parser.add_argument("--burn_in_time", default=0.0, type=float)
-    # arg_parser.add_argument("--ny_n", default=19, type=int)
+    arg_parser.add_argument("--ny_n", default=None, type=int)
     arg_parser.add_argument("--n_runs_per_profile", default=1, type=int)
     arg_parser.add_argument("--n_profiles", default=1, type=int)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
@@ -290,9 +298,6 @@ if __name__ == "__main__":
 
     args['ref_run'] = False
 
-    # args['ny'] = (forcing/(lambda_const**(8/3*args['ny_n'])))**(1/2)
-
-    print('args', args)
 
     if args['start_time'] is not None:
         if args['n_profiles'] > 1 and args['start_time_offset'] is None:

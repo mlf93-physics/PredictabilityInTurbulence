@@ -137,7 +137,6 @@ def import_perturbation_velocities(args=None):
     for iperturb_file, perturb_file_name in enumerate(
             perturb_file_names[i] for i in ascending_perturb_pos_index):
 
-
         ref_file_match_keys_array = np.array(list(ref_file_match.keys()))
         sum_pert_files = sum([len(ref_file_match[ref_file_index]) for
             ref_file_index in ref_file_match_keys_array[:(ref_file_counter + 1)]])
@@ -177,7 +176,6 @@ def import_perturbation_velocities(args=None):
         
         if args['n_files'] is not None and args['n_files'] >= 0:
             if iperturb_file + 1 - args['file_offset'] >= args['n_files']:
-                print('iperturb_file', iperturb_file)
                 break
 
         perturb_index += 1

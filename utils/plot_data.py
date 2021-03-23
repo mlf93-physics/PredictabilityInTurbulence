@@ -75,15 +75,19 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
     # Plot total energy vs time
     energy_vs_time = np.sum(u_store * np.conj(u_store), axis=1).real
     ax.plot(time.real, energy_vs_time, 'k')
+    ax.set_xlim(time.real[0], time.real[-1])
     ax.set_xlabel('Time')
     ax.set_ylabel('Energy')
 
     if omit == 'ny':
         ax.set_title(f'Energy over time vs $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
-    if omit == 'n_f':
+    elif omit == 'n_f':
         ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    else:
+        ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
     
-    if 'perturb_folder' in args:
+    
+    if 'perturb_folder' in args and args['perturb_folder'] is not None:
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
         
@@ -122,7 +126,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]}s')
     
-    if 'perturb_folder' in args:
+    if 'perturb_folder' in args and args['perturb_folder'] is not None:
         # file_names = list(Path(path).glob('*.csv'))
         # Find reference file
         # ref_file_index = None
@@ -393,7 +397,7 @@ def analyse_error_norm_vs_time(u_stores, args=None):
 
     return error_norm_vs_time
 
-def plot_error_norm_vs_time(args=None):
+def plot_error_norm_vs_time(args=None, ax=None):
     
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
@@ -410,7 +414,10 @@ def plot_error_norm_vs_time(args=None):
             i in args['specific_files']]
         error_norm_vs_time = error_norm_vs_time[:, args['specific_files']]
 
-    fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6))
+    if ax is None:
+        fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6))
+    else:
+        axes = ax
     axes.plot(time_array, error_norm_vs_time)#, 'k', linewidth=1)
     axes.set_xlabel('Time [s]')
     axes.set_ylabel('Error')
@@ -421,7 +428,7 @@ def plot_error_norm_vs_time(args=None):
         f', time={header_dict["time"]} | Folder: {args["perturb_folder"]};' +
         f'Files: {args["file_offset"]}-{args["file_offset"] + args["n_files"]}')
     
-    plt.savefig(f'../figures/week6/error_eigen_spectrogram/error_norm_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+    # plt.savefig(f'../figures/week6/error_eigen_spectrogram/error_norm_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
     
     # print('perturb_time_pos_list', perturb_time_pos_list)
     
@@ -797,6 +804,112 @@ def plot_error_vector_spectrum(args=None):
     axes.yaxis.set_label_position("right")
     plt.colorbar(pad=0.1)
 
+def plot_howmoller_diagram_error_norm(args=None):
+    
+    # Import perturbation data
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, perturb_header_dict =\
+        import_perturbation_velocities(args)
+    
+    max_time = perturb_header_dict['time'] if args['max_time'] < 0 else\
+        args['max_time']
+    time_array = np.linspace(0, max_time,
+        int(max_time*sample_rate/dt),
+        dtype=np.float64, endpoint=False)
+    
+    time2D, shell2D = np.meshgrid(time_array, k_vec_temp)
+    energy_array = (u_stores[0]*np.conj(u_stores[0])).real.T
+    mean_shell_energy = np.reshape(np.mean(energy_array, axis=0), (1, time_array.shape[0]))
+    energy_rel_shell_mean_array = energy_array / mean_shell_energy
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True, figsize=(16, 12))
+
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), energy_rel_shell_mean_array,
+        cmap='Reds', levels=20)
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for $|u - u\'|²/\overline{{|u|²}}^k$; f={perturb_header_dict["f"]}'+
+        f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
+        f', time={perturb_header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], label='$|u - u\'|²/\overline{{|u|²}}^k$')
+    pcm.negative_linestyle = 'solid'
+
+    plot_error_norm_vs_time(args=args, ax=axes[1])
+
+    # plt.savefig(f'../figures/week7/howmoller_diagrams/howmoller_diagram_perturb_energy_rel_mean_energy_per_shell_ny{perturb_header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    # plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+    #     args=args)
+
+def plot_howmoller_diagram_u_energy(args=None):
+    
+    # Import reference data
+    time, u_data, header_dict = import_ref_data(args=args)
+
+    # time_array = np.linspace(0, perturb_header_dict['time'],
+    #     int(perturb_header_dict['time']*sample_rate/dt),
+    #     dtype=np.float64, endpoint=False)
+
+    
+    time2D, shell2D = np.meshgrid(time, k_vec_temp)
+    energy_array = (u_data*np.conj(u_data)).real.T
+    
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True)
+    
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), np.log10(energy_array), cmap='Reds',
+        levels=16)
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    pcm.negative_linestyle = 'solid'
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for log$||u - u\'||²$; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], extend='max', label='log$||u - u\'||²$')
+
+    plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+        omit='ny', args=args)
+
+
+def plot_howmoller_diagram_u_energy_rel_mean(args=None):
+    
+    # Import reference data
+    time, u_data, header_dict = import_ref_data(args=args)
+
+    # time_array = np.linspace(0, perturb_header_dict['time'],
+    #     int(perturb_header_dict['time']*sample_rate/dt),
+    #     dtype=np.float64, endpoint=False)
+
+    
+    time2D, shell2D = np.meshgrid(time, k_vec_temp)
+    energy_array = (u_data*np.conj(u_data)).real.T
+    mean_energy = np.reshape(np.mean(energy_array, axis=1), (n_k_vec, 1))
+    energy_rel_mean_array = energy_array - mean_energy
+    
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True)
+    
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), energy_rel_mean_array, cmap='Reds',
+        levels=20)
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    pcm.negative_linestyle = 'solid'
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for $|u|² - \overline{{|u|²}}$; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], extend='max', label='$|u|² - \overline{{|u|²}}$')
+    plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[1],
+        args=args)
+
+
 
 if __name__ == "__main__":
     # Define arguments
@@ -806,6 +919,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
     arg_parser.add_argument("--specific_ref_records", nargs='+', default=[0], type=int)
+    arg_parser.add_argument("--max_time", default=-1, type=float)
+    arg_parser.add_argument("--time_offset", default=-1, type=float)
 
     subparsers = arg_parser.add_subparsers()
     perturb_parser = subparsers.add_parser("perturb_plot", help=
@@ -829,9 +944,21 @@ if __name__ == "__main__":
     arg_parser.add_argument("--time_to_run",
                                    default=0.1,
                                    type=float)
+    arg_parser.add_argument("--subplot_config", nargs=2,
+                                   default=[None, None],
+                                   type=int)
 
     args = vars(arg_parser.parse_args())
     print('args', args)
+
+    # Make subplots if requested
+    if args['subplot_config'][0] is not None:
+        fig, axes = plt.subplots(nrows=args['subplot_config'][0],
+            ncols=args['subplot_config'][1])
+    
+        args['fig'] = fig
+        args['axes'] = axes
+
 
     # Set seed if wished
     if args['seed_mode']:
@@ -889,5 +1016,14 @@ if __name__ == "__main__":
 
     if "error_vector_spectrum" in args['plot_type']:
         plot_error_vector_spectrum(args=args)
+
+    if "error_howmoller" in args['plot_type']:
+        plot_howmoller_diagram_error_norm(args=args)
+
+    if "u_howmoller" in args['plot_type']:
+        plot_howmoller_diagram_u_energy(args=args)
+
+    if "u_howmoller_rel_mean" in args['plot_type']:
+        plot_howmoller_diagram_u_energy_rel_mean(args=args)
 
     plt.show()

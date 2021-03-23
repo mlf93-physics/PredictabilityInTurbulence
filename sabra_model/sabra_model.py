@@ -14,8 +14,11 @@ profiler = Profiler()
 @njit((types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 1, 'C', readonly=False),
        types.Array(types.complex128, 2, 'C', readonly=False),
-       types.int64, types.float64, types.float64), cache=True)
-def run_model(u_old, du_array, data_out, Nt_local, ny, forcing):
+       types.int64, types.float64, types.float64,
+       types.Array(types.complex128, 1, 'C', readonly=True),
+       types.boolean), cache=True)
+def run_model(u_old, du_array, data_out, Nt_local, ny, forcing0, forcing_array,
+        dynamic_forcing):
     """Execute the integration of the sabra shell model.
     
     Parameters
@@ -38,8 +41,12 @@ def run_model(u_old, du_array, data_out, Nt_local, ny, forcing):
             data_out[sample_number, 1:] = u_old[bd_size:-bd_size]
             sample_number += 1
         
+        if dynamic_forcing:
+            forcing_array = forcing0*u_old/np.linalg.norm(u_old)**2
+        
         # Update u_old
-        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny, forcing=forcing)
+        u_old = runge_kutta4_vec(y0=u_old, h=dt, du=du_array, ny=ny,
+            forcing=forcing_array)
     
     return u_old
 
@@ -58,12 +65,17 @@ def main(args=None):
         f' of {args["burn_in_time"]:.2f}s, i.e. {args["n_records"]:d} records '+
         f'are saved to disk each with {args["record_max_time"]:.1f}s data\n')
     
+    # Define forcing array
+    forcing_array = np.zeros(n_k_vec + 2*bd_size, dtype=np.complex128)
+    forcing_array[n_forcing + bd_size] = args['forcing']
+
     # Burn in the model for the desired burn in time
-    data_out = np.zeros((int(args["burn_in_time"]*sample_rate/dt), n_k_vec + 1),
-            dtype=np.complex128)
-    print(f'running burn-in phase of {args["burn_in_time"]}s\n')
-    u_old = run_model(u_old, du_array, data_out, int(args['burn_in_time']/dt),
-            args['ny'], args['forcing'])
+    if args['burn_in_time'] > 0:
+        data_out = np.zeros((int(args["burn_in_time"]*sample_rate/dt), n_k_vec + 1),
+                dtype=np.complex128)
+        print(f'running burn-in phase of {args["burn_in_time"]}s\n')
+        u_old = run_model(u_old, du_array, data_out, int(args['burn_in_time']/dt),
+            args['ny'], args['forcing'], forcing_array, args['dynamic_forcing'])
 
     for ir in range(args['n_records']):
         # Calculate data out size
@@ -81,7 +93,7 @@ def main(args=None):
         # Run model
         print(f'running record {ir + 1}/{args["n_records"]}')
         u_old = run_model(u_old, du_array, data_out, out_array_size/sample_rate,
-            args['ny'], args['forcing'])
+            args['ny'], args['forcing'], forcing_array, args['dynamic_forcing'])
 
         # Add record_id to datafile header
         args['record_id'] = ir
@@ -100,6 +112,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("--forcing", default=1, type=float)
     arg_parser.add_argument("--save_folder", nargs='?', default='data', type=str)
     arg_parser.add_argument("--record_max_time", default=30, type=float)
+    arg_parser.add_argument("--dynamic_forcing", default=False, type=bool)
     time_group = arg_parser.add_mutually_exclusive_group(required=True)
     time_group.add_argument("--time_to_run", type=float)
     time_group.add_argument("--n_turnovers", type=float)

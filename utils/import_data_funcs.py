@@ -38,7 +38,6 @@ def import_data(file_name, skip_lines=0, max_rows=None):
     
     # Import header
     header_dict = import_header(file_name=file_name)
-
     # Import data
     data_in = np.genfromtxt(file_name,
         dtype=np.complex128, delimiter=',', skip_header=skip_lines,
@@ -64,9 +63,20 @@ def import_ref_data(args=None):
         records_to_import = args['specific_ref_records']
         print('\n Importing listed reference data records: ', records_to_import, '\n')
     
+    if args['max_time'] > 0:
+        max_rows = int(args['max_time']*sample_rate/dt)
+    else:
+        max_rows = None
+    
+    if args['time_offset'] > 0:
+        skip_lines = int(args['time_offset']*sample_rate/dt)
+    else:
+        skip_lines = 0
+    
     for record in records_to_import:
         file_name = ref_record_names_sorted[record]
-        data_in, header_dict = import_data(file_name)
+        data_in, header_dict = import_data(file_name, skip_lines=skip_lines,
+            max_rows=max_rows)
         time_concat.append(data_in[:, 0])
         u_data_concat.append(data_in[:, 1:])
     
@@ -95,6 +105,13 @@ def import_perturbation_velocities(args=None):
     if args['path'] is None:
         raise ValueError('No path specified')
     
+    # Get import settings
+    if args['max_time'] > 0:
+        perturb_max_rows = int(args['max_time']*sample_rate/dt)
+    else:
+        perturb_max_rows = None
+
+
     # Check if ref path exists
     ref_file_path = Path(args['path'], 'ref_data')
 
@@ -149,23 +166,33 @@ def import_perturbation_velocities(args=None):
             perturb_index += 1
             continue
         
-        perturb_data_in, perturb_header_dict = import_data(perturb_file_name)
+        perturb_data_in, perturb_header_dict = import_data(perturb_file_name,
+            max_rows=perturb_max_rows)
         # Initialise ref_data_in of null size
         ref_data_in = np.array([[]], dtype=np.complex128)
 
+
         # Keep importing datafiles untill ref_data_in has same size as perturb dataarray
         counter = 0
-        while ref_data_in.shape[0] < perturb_header_dict['N_data']:
-            skip_lines=ref_file_match[ref_file_match_keys_array[ref_file_counter]]\
+        seeked_ref_data_length = perturb_header_dict['N_data'] if perturb_max_rows is None else perturb_max_rows
+        
+        while ref_data_in.shape[0] < seeked_ref_data_length:
+            ref_skip_lines = ref_file_match[ref_file_match_keys_array[ref_file_counter]]\
                     [perturb_index] if counter == 0 else 0
-            max_rows=int(perturb_header_dict['N_data']) if counter == 0 else\
-                int(perturb_header_dict['N_data']) - ref_data_in.shape[0]
+            
+
+            if perturb_max_rows is None:
+                ref_max_rows = int(perturb_header_dict['N_data']) if counter == 0 else\
+                    int(perturb_header_dict['N_data']) - ref_data_in.shape[0]
+            else:
+                ref_max_rows = perturb_max_rows if counter == 0 else\
+                    perturb_max_rows - ref_data_in.shape[0]
 
 
             temp_ref_data_in, ref_header_dict = import_data(ref_record_names_sorted[
                     ref_file_match_keys_array[ref_file_counter] + counter],
-                skip_lines=skip_lines,
-                max_rows=max_rows)
+                skip_lines=ref_skip_lines,
+                max_rows=ref_max_rows)
             
             ref_data_in = np.concatenate((ref_data_in, temp_ref_data_in)) if\
                 counter > 0 else temp_ref_data_in

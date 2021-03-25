@@ -84,6 +84,8 @@ def main(args=None):
                     int(args["record_max_time"]/dt) > 0:
                 out_array_size = int((args['Nt'] - args['burn_in_time']/dt % \
                     int(args["record_max_time"]/dt))*sample_rate)
+            else:
+                out_array_size = int(args["record_max_time"]*sample_rate/dt)
         else:
             out_array_size = int(args["record_max_time"]*sample_rate/dt)
 

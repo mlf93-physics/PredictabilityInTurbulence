@@ -119,8 +119,9 @@ def import_perturbation_velocities(args=None):
     ref_header_path = list(Path(ref_file_path).glob('*.txt'))[0]
     # Import header info
     ref_header_dict = import_header(file_name=ref_header_path)
-    
-    perturb_file_names = list(Path(args['path'], args['perturb_folder']).
+
+    # Import perturbation files
+    perturb_file_names = list(Path(args['path'], args['perturb_folder'][0]).
         glob('*.csv'))
     perturb_time_pos_list_legend = []
     perturb_time_pos_list = []
@@ -191,7 +192,7 @@ def import_perturbation_velocities(args=None):
 
             temp_ref_data_in, ref_header_dict = import_data(ref_record_names_sorted[
                     ref_file_match_keys_array[ref_file_counter] + counter],
-                skip_lines=ref_skip_lines,
+                skip_lines=ref_skip_lines,      # + 1
                 max_rows=ref_max_rows)
             
             ref_data_in = np.concatenate((ref_data_in, temp_ref_data_in)) if\

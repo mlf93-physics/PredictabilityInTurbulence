@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import numpy as np
 from scipy import signal
+from scipy.optimize import curve_fit as SPCurveFit
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
 from src.params.params import *
@@ -640,14 +641,13 @@ def plot_error_energy_spectrum_vs_time(args=None):
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
     
-    print('header_dict', header_dict)
-    plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
-        np.abs(u_stores[0][0:10:1, :args['n_shell_compare'] + 1]).T)
-    plt.xlabel('Shell number')
-    plt.ylabel('$|u_{{k<m}} - u_{{k<m}}\'|$')
-    plt.title('Error energy spectrum vs time; first 10 time samples')
-    # plt.yscale('log')
-    plt.show()
+    # plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+    #     np.abs(u_stores[0][0:10:1, :args['n_shell_compare'] + 1]).T)
+    # plt.xlabel('Shell number')
+    # plt.ylabel('$|u_{{k<m}} - u_{{k<m}}\'|$')
+    # plt.title('Error energy spectrum vs time; first 10 time samples')
+    # # plt.yscale('log')
+    # plt.show()
 
     if args['n_files'] < 0:
         n_files = len(perturb_time_pos_list)
@@ -659,7 +659,7 @@ def plot_error_energy_spectrum_vs_time(args=None):
 
     # Prepare exponential time indices
     if args['linear_time']:
-        time_indices = np.linspace(0, header_dict['N_data']//1000 - 1, n_divisions,
+        time_indices = np.linspace(0, header_dict['N_data'] - 1, n_divisions,
             endpoint=True, dtype=np.int32)
     else:
         time_linear = np.linspace(0, 10, n_divisions)
@@ -698,7 +698,7 @@ def plot_error_energy_spectrum_vs_time(args=None):
     #         error_mean_spectra[i, :] + error_std_spectra[i, :]/
     #         error_mean_spectra[i, :],
     #         alpha=0.4, color=temp_plot[i].get_color())
-    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
+    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{-1/3}$')
     plt.yscale('log')
     legend = [f'{item/sample_rate*dt:.3e}' for item in time_indices]
     plt.legend(legend, loc="center right", bbox_to_anchor=(1.1, 0.5))
@@ -708,7 +708,83 @@ def plot_error_energy_spectrum_vs_time(args=None):
     plt.title(f'Error energy spectrum vs time; f={header_dict["f"]}'+
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]}, N_tot={n_files} | Folder: {args["perturb_folder"]}')
-    plt.savefig(f'../figures/week6/error_spectra_vs_time/single_shell5_perturb/error_spectra_vs_time_ref_ny_n_19_folder_single_shell5_perturb_ny_n{int(header_dict["n_ny"]):d}_files_{n_files}', format='png')
+    # plt.savefig(f'../figures/week6/error_spectra_vs_time/single_shell5_perturb/error_spectra_vs_time_ref_ny_n_19_folder_single_shell5_perturb_ny_n{int(header_dict["n_ny"]):d}_files_{n_files}', format='png')
+
+def plot_error_energy_vs_time_comparison(args=None):
+
+    u_stores_list = []
+    paths = ['./data/ny2.37e-08_t3.2e+01_n_f0_f1_j0_static_forcing/',
+        './data/ny3.78e-07_t3.20e+01_n_f0_f1_j0/']
+    perturb_folders = args['perturb_folder'].copy()
+    for i, perturb_folder in enumerate(perturb_folders):
+        args['path'] = paths[i]
+        args['perturb_folder'] = [perturb_folder]
+
+        u_stores, perturb_time_pos_list, _, header_dict =\
+            import_perturbation_velocities(args)
+        
+        u_stores_list.append(u_stores)
+
+    if args['n_files'] < 0:
+        n_files = len(perturb_time_pos_list)
+    else:
+        n_files = args['n_files']
+
+    n_divisions = 10
+
+    # Prepare exponential time indices
+    if args['linear_time']:
+        time_indices = np.linspace(0, header_dict['N_data'] - 1, n_divisions,
+            endpoint=True, dtype=np.int32)
+    else:
+        time_linear = np.linspace(0, 10, n_divisions)
+        time_indices = np.array(header_dict['N_data']/
+            np.exp(10)*np.exp(time_linear), dtype=np.int32)
+        time_indices[-1] -= 1       # Include endpoint manually
+
+    error_mean_spectra_list = []
+    for u_stores in u_stores_list:
+        error_spectra =\
+            np.zeros((n_files, n_divisions, args['n_shell_compare'] + 1), dtype=np.float64)
+        for ifile in range(n_files):
+            for i, data_index in enumerate(time_indices):
+                error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index,
+                    :args['n_shell_compare'] + 1]).real
+        
+    
+        # Calculate mean and std
+        error_mean_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+            dtype=np.float64)
+        # error_std_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        #     dtype=np.float64)
+        # Find zeros    
+        # error_spectra[np.where(error_spectra == 0)] = np.nan
+
+
+        for i, data_index in enumerate(time_indices):
+            error_mean_spectra[i, :] = np.nanmean(error_spectra[:, i, :], axis=0)
+            # error_std_spectra[i, :] = np.nanstd(error_spectra[:, i, :], axis=0)
+        
+        error_mean_spectra[0, :] = error_spectra[0, 0, :]
+
+        error_mean_spectra_list.append(error_mean_spectra)
+
+    # error_mean_spectra[np.where(error_mean_spectra == np.nan)] = 0.0
+    error_mean_spectra_comparison = error_mean_spectra_list[0] - error_mean_spectra_list[1]
+    plt.figure(figsize=(16, 12))
+    temp_plot = plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+        error_mean_spectra_comparison.T)
+
+    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{-1/3}$')
+    plt.yscale('log')
+    legend = [f'{item/sample_rate*dt:.3e}' for item in time_indices]
+    plt.legend(legend, loc="center right", bbox_to_anchor=(1.1, 0.5))
+    plt.xlabel('Shell number')
+    # plt.ylabel('$u_n - u^{\'}_n$')
+    plt.ylim(1e-22, 10)
+    plt.title(f'Comparison of error energy spectrum vs time; f={header_dict["f"]}'+
+            f', $n_f$={int(header_dict["n_f"])}'+
+            f', time={header_dict["time"]}, N_tot={n_files} | Folders: {perturb_folders[0]} - {perturb_folders[1]}')
 
 def plot_error_vector_spectrogram(args=None):
     args['n_files'] = 1
@@ -760,7 +836,7 @@ def plot_error_vector_spectrogram(args=None):
     plot_error_norm_vs_time(args=args, ax=axes[1])
     axes[1].set_xlim(0, 1)
 
-    plt.savefig(f'../figures/week7/error_eigen_spectrogram_with_error_norm_plot/error_eigen_spectrogram_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+    # plt.savefig(f'../figures/week7/error_eigen_spectrogram_with_error_norm_plot/error_eigen_spectrogram_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
 
     # plt.savefig(f'../figures/week6/error_eigen_value_spectra_2D/error_eigen_value_spectrum_ny{header_dict["ny"]}_time_{i/u_stores[0].shape[0]}.png', format='png')
     # plt.clim(0, 1)
@@ -938,7 +1014,69 @@ def plot_howmoller_diagram_u_energy_rel_mean(args=None):
     plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[1],
         args=args)
 
+def plot_lyaponov_exp_histogram(args=None):
 
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend,\
+        perturb_header_dict = import_perturbation_velocities(args)
+
+    if args['n_files'] < 0:
+        n_files = len(perturb_time_pos_list)
+    else:
+        n_files = args['n_files']
+
+    time_array = np.linspace(0, perturb_header_dict['time'],
+        int(perturb_header_dict['time']*sample_rate/dt),
+        dtype=np.float64, endpoint=False)
+
+    n_slopes = 20
+    slope_width = int(perturb_header_dict['N_data']//(n_slopes))
+
+    def linear_func(x, a, b):
+        return a*x + b
+
+    error_norm_vs_time = analyse_error_norm_vs_time(u_stores, args=args)
+
+
+    exp_store = np.zeros(n_slopes*n_files)
+    # pcov_store = np.zeros(n_slopes*n_files)
+    y_span = np.zeros(n_slopes*n_files)
+
+    # fig, axes = plt.subplots(nrows=2, ncols=1)
+    for i in range(n_files):
+        for j in range(n_slopes):
+            popt, pcov = SPCurveFit(linear_func, time_array[slope_width*j:slope_width*(j + 1)],
+                np.log10(error_norm_vs_time[slope_width*j:slope_width*(j + 1), i]))
+            
+            y_span[i*n_slopes + j] = np.log10(error_norm_vs_time[slope_width*(j + 1) - 1, i])\
+                - np.log10(error_norm_vs_time[slope_width*j, i])
+            
+            exp_store[i*n_slopes + j] = popt[0]
+            # pcov_store[i*n_slopes + j] = pcov[0]
+            
+    #         axes[0].plot(time_array[slope_width*j:slope_width*(j + 1)],
+    #             popt[0]*time_array[slope_width*j:slope_width*(j + 1)] + popt[1], 'k')
+            
+    # axes[0].plot(time_array, np.log10(error_norm_vs_time))
+    # axes[0].set_xlabel('Time')
+    # axes[0].set_ylabel('log($||u - u\'||$)')
+    # axes[0].set_title(f'Lyaponov exponent vs time; f={perturb_header_dict["f"]}'+
+    #     f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
+    #     f', time={perturb_header_dict["time"]} | Folder: {args["perturb_folder"]};' +
+    #     f'Files: {args["file_offset"]}-{args["file_offset"] + args["n_files"]}')
+    
+    # y_span = y_span/np.max(y_span)
+    # axes[1].hist(exp_store[exp_store > 0], weights=y_span[exp_store > 0], density=True)
+    # axes[1].set_xlabel('Lyaponov exponent')
+    # axes[1].set_ylabel('Count density')
+    # axes[1].set_title('Maximum Lyaponov exponent distribution')
+
+    # plt.subplots_adjust(hspace=0.238)
+
+    y_span = y_span/np.max(y_span)
+    plt.hist(exp_store[exp_store > 0], bins=20, density=True)
+    plt.xlabel('Lyaponov exponent')
+    plt.ylabel('Count density')
+    plt.title('Maximum Lyaponov exponent distribution')
 
 if __name__ == "__main__":
     # Define arguments
@@ -954,7 +1092,7 @@ if __name__ == "__main__":
     subparsers = arg_parser.add_subparsers()
     perturb_parser = subparsers.add_parser("perturb_plot", help=
         'Arguments needed for plotting the perturbation vs time plot.')
-    perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
+    perturb_parser.add_argument("--perturb_folder", nargs='+', default=None, type=str)
     perturb_parser.add_argument("--n_files", default=-1, type=int)
     perturb_parser.add_argument("--file_offset", default=0, type=int)
     perturb_parser.add_argument("--specific_files", nargs='+', default=None, type=int)
@@ -982,8 +1120,9 @@ if __name__ == "__main__":
                                    default=19,
                                    type=int)
 
-    args = vars(arg_parser.parse_args())
+    args = vars(arg_parser.parse_args())  
     print('args', args)
+
 
     # Make subplots if requested
     if args['subplot_config'][0] is not None:
@@ -1029,6 +1168,9 @@ if __name__ == "__main__":
     
     if "error_spectrum_vs_time" in args['plot_type']:
         plot_error_energy_spectrum_vs_time(args=args)
+    
+    if "error_spectrum_vs_time_comparison" in args['plot_type']:
+        plot_error_energy_vs_time_comparison(args=args)
 
     if "shell_error" in args['plot_type']:
         if args['path'] is None:
@@ -1059,5 +1201,8 @@ if __name__ == "__main__":
 
     if "u_howmoller_rel_mean" in args['plot_type']:
         plot_howmoller_diagram_u_energy_rel_mean(args=args)
+
+    if "lyaponov_exp_histogram" in args['plot_type']:
+        plot_lyaponov_exp_histogram(args=args)
 
     plt.show()

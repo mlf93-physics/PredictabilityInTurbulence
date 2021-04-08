@@ -168,9 +168,9 @@ def import_perturbation_velocities(args=None):
         
         perturb_data_in, perturb_header_dict = import_data(perturb_file_name,
             max_rows=perturb_max_rows)
+        
         # Initialise ref_data_in of null size
         ref_data_in = np.array([[]], dtype=np.complex128)
-
 
         # Keep importing datafiles untill ref_data_in has same size as perturb dataarray
         counter = 0

@@ -112,8 +112,9 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
 def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit=None,
         path=None, args=None):
     # Plot total energy vs time
-    energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real, axis=1)
-    ax.plot(time.real, energy_vs_time, 'k')
+    energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real[:, ::-1], axis=1)
+    ax.plot(time.real, energy_vs_time, 'k')#, linewidth=0.5)
+    # ax.set_yscale('log')
     ax.set_xlabel('Time')
     ax.set_ylabel('Energy')
 
@@ -193,39 +194,39 @@ def analyse_eddie_turnovertime(u_store, header_dict, args=None):
     fig, axes = plt.subplots(nrows=2, ncols=1)
     # Calculate mean eddy turnover time
     mean_u_norm = np.mean(np.sqrt(u_store*np.conj(u_store)).real, axis=0)
-    mean_eddy_turnover = 1/(k_vec_temp*mean_u_norm)
-    print('mean_eddy_turnover', mean_eddy_turnover)
+    mean_eddy_turnover = 2*np.pi/(k_vec_temp*mean_u_norm)
+    # print('mean_eddy_turnover', mean_eddy_turnover)
     eddy_freq = 1/mean_eddy_turnover
-    print('eddy_freq', eddy_freq)
+    # print('eddy_freq', eddy_freq)
 
     # plt.figure(10)
-    axes[0].plot(k_vec_temp, eddy_freq, 'k.', label='Eddy freq. from $||u||$')
-    axes[0].plot(k_vec_temp, k_vec_temp**(2/3), 'k--', label='$k^{2/3}$')
+    axes[0].plot(np.log2(k_vec_temp), eddy_freq, 'k.', label='Eddy freq. from $||u||$')
+    axes[0].plot(np.log2(k_vec_temp), (k_vec_temp/(2*np.pi))**(2/3), 'k--', label='$k^{2/3}$')
     # print('k_vectors_to_plot', k_vectors_to_plot)
     # for i, k in enumerate(k_vectors_to_plot[::-1]):
     #     axes[0].plot(k_vec_temp[k], eddy_freq[k], '.', label='_nolegend_')
         
+    temp_time = header_dict["time"] if args["max_time"] < 0 else args["max_time"]
+
     axes[0].set_yscale('log')
-    axes[0].set_xscale('log')
     axes[0].grid()
     axes[0].legend()
     axes[0].set_xlabel('k')
     axes[0].set_ylabel('Eddy frequency')
     axes[0].set_title('Eddy frequencies vs k; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}s')
+        f', time={temp_time}s')
 
-    axes[1].plot(k_vec_temp, mean_eddy_turnover, 'k.', label='Eddy turnover time from $||u||$')
-    axes[1].plot(k_vec_temp, k_vec_temp**(-2/3), 'k--', label='$k^{-2/3}$')
+    axes[1].plot(np.log2(k_vec_temp), mean_eddy_turnover, 'k.', label='Eddy turnover time from $||u||$')
+    axes[1].plot(np.log2(k_vec_temp), (k_vec_temp/(2*np.pi))**(-2/3), 'k--', label='$k^{-2/3}$')
     axes[1].set_yscale('log')
-    axes[1].set_xscale('log')
     axes[1].grid()
     axes[1].legend()
     axes[1].set_xlabel('k')
     axes[1].set_ylabel('Eddy turnover time')
-    axes[1].set_title('Eddy turnover time vs k; f={header_dict["f"]}'+
+    axes[1].set_title(f'Eddy turnover time vs k; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}s')
+        f', time={temp_time}s')
 
 
 
@@ -291,9 +292,9 @@ def plots_related_to_energy(args=None):
     time, u_data, header_dict = import_ref_data(args=args)
 
     # Conserning ny
-    plot_energy_spectrum(u_data, header_dict, ax = axes[0], omit='ny')
-    plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
-        omit='ny', args=args)
+    # plot_energy_spectrum(u_data, header_dict, ax = axes[0], omit='ny')
+    # plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+    #     omit='ny', args=args)
     plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[2],
         path=args['path'], args=args)
 
@@ -340,14 +341,9 @@ def plots_related_to_forcing():
     axes[1].legend(legend_forcing)
 
 def plot_eddie_freqs(args=None):
-    # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
+    time, u_data, header_dict = import_ref_data(args=args)
 
-    for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, skip_lines=args['burn_in_lines'])
-        time = data_in[:, 0]
-        u_store = data_in[:, 1:]
-
-        analyse_eddie_turnovertime(u_store, header_dict, args=args)
+    analyse_eddie_turnovertime(u_data, header_dict, args=args)
     
 
 def plot_shell_error_vs_time(args=None):
@@ -639,22 +635,31 @@ def plot_eigen_vector_comparison(args=None):
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
-def plot_error_energy_spectrum_vs_time_2D(args=None):
+def plot_error_energy_spectrum_vs_time(args=None):
     
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
+    
+    print('header_dict', header_dict)
+    plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+        np.abs(u_stores[0][0:10:1, :args['n_shell_compare'] + 1]).T)
+    plt.xlabel('Shell number')
+    plt.ylabel('$|u_{{k<m}} - u_{{k<m}}\'|$')
+    plt.title('Error energy spectrum vs time; first 10 time samples')
+    # plt.yscale('log')
+    plt.show()
 
     if args['n_files'] < 0:
         n_files = len(perturb_time_pos_list)
     else:
         n_files = args['n_files']
 
-    n_divisions = 25
-    error_spectra = np.zeros((n_files, n_divisions, n_k_vec), dtype=np.float64)
+    n_divisions = 10
+    error_spectra = np.zeros((n_files, n_divisions, args['n_shell_compare'] + 1), dtype=np.float64)
 
     # Prepare exponential time indices
     if args['linear_time']:
-        time_indices = np.linspace(0, header_dict['N_data'] - 1, n_divisions,
+        time_indices = np.linspace(0, header_dict['N_data']//1000 - 1, n_divisions,
             endpoint=True, dtype=np.int32)
     else:
         time_linear = np.linspace(0, 10, n_divisions)
@@ -664,11 +669,14 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
 
     for ifile in range(n_files):
         for i, data_index in enumerate(time_indices):
-            error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index, :]).real
+            error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index,
+                :args['n_shell_compare'] + 1]).real
     
     # Calculate mean and std
-    error_mean_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
-    error_std_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+    error_mean_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        dtype=np.float64)
+    error_std_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        dtype=np.float64)
     # Find zeros    
     # error_spectra[np.where(error_spectra == 0)] = np.nan
 
@@ -680,7 +688,8 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
     # error_mean_spectra[np.where(error_mean_spectra == np.nan)] = 0.0
     error_mean_spectra[0, :] = error_spectra[0, 0, :]
     plt.figure(figsize=(16, 12))
-    temp_plot = plt.plot(np.log2(k_vec_temp), error_mean_spectra.T)
+    temp_plot = plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+        error_mean_spectra.T)
 
     # for i in range(n_divisions):
     #     # print('error_std_spectra[i, :]/error_mean_spectra[i, :]', error_std_spectra[i, :]/error_mean_spectra[i, :])
@@ -969,6 +978,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("--subplot_config", nargs=2,
                                    default=[None, None],
                                    type=int)
+    arg_parser.add_argument("--n_shell_compare",
+                                   default=19,
+                                   type=int)
 
     args = vars(arg_parser.parse_args())
     print('args', args)
@@ -1016,7 +1028,7 @@ if __name__ == "__main__":
             plot_error_norm_vs_time(args=args)
     
     if "error_spectrum_vs_time" in args['plot_type']:
-        plot_error_energy_spectrum_vs_time_2D(args=args)
+        plot_error_energy_spectrum_vs_time(args=args)
 
     if "shell_error" in args['plot_type']:
         if args['path'] is None:

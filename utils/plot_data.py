@@ -5,6 +5,7 @@ from pathlib import Path
 import argparse
 import numpy as np
 from scipy import signal
+from scipy.optimize import curve_fit as SPCurveFit
 import matplotlib.pyplot as plt
 from math import floor, log, ceil, sqrt
 from src.params.params import *
@@ -75,15 +76,19 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
     # Plot total energy vs time
     energy_vs_time = np.sum(u_store * np.conj(u_store), axis=1).real
     ax.plot(time.real, energy_vs_time, 'k')
+    ax.set_xlim(time.real[0], time.real[-1])
     ax.set_xlabel('Time')
     ax.set_ylabel('Energy')
 
     if omit == 'ny':
         ax.set_title(f'Energy over time vs $\\nu$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, time={header_dict["time"]}')
-    if omit == 'n_f':
+    elif omit == 'n_f':
         ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
+    else:
+        ax.set_title(f'Energy over time vs $n_f$; f={header_dict["f"]}, $n_f$={header_dict["n_f"]}, $\\nu$={header_dict["ny"]:.2e}, time={header_dict["time"]}')
     
-    if 'perturb_folder' in args:
+    
+    if 'perturb_folder' in args and args['perturb_folder'] is not None:
         perturb_file_names = list(Path(args['path'], args['perturb_folder']).
             glob('*.csv'))
         
@@ -101,15 +106,16 @@ def plot_inviscid_quantities(time, u_store, header_dict, ax=None, omit=None,
                 break
         
         for idx in sorted(index):
-            plt.plot(idx/sample_rate*dt,
+            ax.plot(idx/sample_rate*dt,
                 energy_vs_time[int(idx*sample_rate)], marker='o')
 
 
 def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit=None,
         path=None, args=None):
     # Plot total energy vs time
-    energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real, axis=1)
-    ax.plot(time.real, energy_vs_time, 'k')
+    energy_vs_time = np.cumsum((u_store * np.conj(u_store)).real[:, ::-1], axis=1)
+    ax.plot(time.real, energy_vs_time, 'k')#, linewidth=0.5)
+    # ax.set_yscale('log')
     ax.set_xlabel('Time')
     ax.set_ylabel('Energy')
 
@@ -122,7 +128,7 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]}s')
     
-    if 'perturb_folder' in args:
+    if 'perturb_folder' in args and args['perturb_folder'] is not None:
         # file_names = list(Path(path).glob('*.csv'))
         # Find reference file
         # ref_file_index = None
@@ -145,23 +151,23 @@ def plot_inviscid_quantities_per_shell(time, u_store, header_dict, ax=None, omit
         for ifile, file_name in enumerate(perturb_file_names):
             header_dicts.append(import_header(file_name=file_name))
             index.append(header_dicts[-1]['perturb_pos'])
-
-        for ifile, idx in enumerate(np.argsort(index)):
-
-            point_plot = plt.plot(np.ones(n_k_vec)*header_dicts[idx]['perturb_pos']/sample_rate*dt,
-                energy_vs_time[int(header_dicts[idx]['perturb_pos'])], 'o')
         
-            time_array = np.linspace(0, header_dicts[idx]['time'],
-                int(header_dicts[idx]['time']*sample_rate/dt),
-                dtype=np.float64, endpoint=False)
+        for ifile, idx in enumerate(np.argsort(index)):
+            point_plot = ax.plot(np.ones(n_k_vec)*header_dicts[idx]['perturb_pos']/sample_rate*dt,
+                energy_vs_time[int(header_dicts[idx]['perturb_pos'])], 'o')
             
-            perturbation_energy_vs_time = np.cumsum(((
-                pert_u_stores[ifile] + u_store[int(header_dicts[idx]['perturb_pos']):
-                int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :]) *
-                np.conj(pert_u_stores[ifile] + u_store[int(header_dicts[idx]['perturb_pos']):
-                int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :])).real, axis=1)
-            ax.plot(time_array + perturb_time_pos_list[idx],
-                perturbation_energy_vs_time, color=point_plot[0].get_color())
+            if args['perturbation_energy']:
+                time_array = np.linspace(0, header_dicts[idx]['time'],
+                    int(header_dicts[idx]['time']*sample_rate/dt),
+                    dtype=np.float64, endpoint=False)
+                
+                perturbation_energy_vs_time = np.cumsum(((
+                    pert_u_stores[ifile] + u_store[int(header_dicts[idx]['perturb_pos']):
+                    int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :]) *
+                    np.conj(pert_u_stores[ifile] + u_store[int(header_dicts[idx]['perturb_pos']):
+                    int(header_dicts[idx]['perturb_pos']) + int(header_dicts[idx]['N_data']), :])).real, axis=1)
+                ax.plot(time_array + perturb_time_pos_list[idx]/sample_rate*dt,
+                    perturbation_energy_vs_time, color=point_plot[0].get_color())
             
             if ifile + 1 >= args['n_files'] and args['n_files'] > 0:
                 break
@@ -189,39 +195,39 @@ def analyse_eddie_turnovertime(u_store, header_dict, args=None):
     fig, axes = plt.subplots(nrows=2, ncols=1)
     # Calculate mean eddy turnover time
     mean_u_norm = np.mean(np.sqrt(u_store*np.conj(u_store)).real, axis=0)
-    mean_eddy_turnover = 1/(k_vec_temp*mean_u_norm)
-    print('mean_eddy_turnover', mean_eddy_turnover)
+    mean_eddy_turnover = 2*np.pi/(k_vec_temp*mean_u_norm)
+    # print('mean_eddy_turnover', mean_eddy_turnover)
     eddy_freq = 1/mean_eddy_turnover
-    print('eddy_freq', eddy_freq)
+    # print('eddy_freq', eddy_freq)
 
     # plt.figure(10)
-    axes[0].plot(k_vec_temp, eddy_freq, 'k.', label='Eddy freq. from $||u||$')
-    axes[0].plot(k_vec_temp, k_vec_temp**(2/3), 'k--', label='$k^{2/3}$')
+    axes[0].plot(np.log2(k_vec_temp), eddy_freq, 'k.', label='Eddy freq. from $||u||$')
+    axes[0].plot(np.log2(k_vec_temp), (k_vec_temp/(2*np.pi))**(2/3), 'k--', label='$k^{2/3}$')
     # print('k_vectors_to_plot', k_vectors_to_plot)
     # for i, k in enumerate(k_vectors_to_plot[::-1]):
     #     axes[0].plot(k_vec_temp[k], eddy_freq[k], '.', label='_nolegend_')
         
+    temp_time = header_dict["time"] if args["max_time"] < 0 else args["max_time"]
+
     axes[0].set_yscale('log')
-    axes[0].set_xscale('log')
     axes[0].grid()
     axes[0].legend()
     axes[0].set_xlabel('k')
     axes[0].set_ylabel('Eddy frequency')
     axes[0].set_title('Eddy frequencies vs k; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}s')
+        f', time={temp_time}s')
 
-    axes[1].plot(k_vec_temp, mean_eddy_turnover, 'k.', label='Eddy turnover time from $||u||$')
-    axes[1].plot(k_vec_temp, k_vec_temp**(-2/3), 'k--', label='$k^{-2/3}$')
+    axes[1].plot(np.log2(k_vec_temp), mean_eddy_turnover, 'k.', label='Eddy turnover time from $||u||$')
+    axes[1].plot(np.log2(k_vec_temp), (k_vec_temp/(2*np.pi))**(-2/3), 'k--', label='$k^{-2/3}$')
     axes[1].set_yscale('log')
-    axes[1].set_xscale('log')
     axes[1].grid()
     axes[1].legend()
     axes[1].set_xlabel('k')
     axes[1].set_ylabel('Eddy turnover time')
-    axes[1].set_title('Eddy turnover time vs k; f={header_dict["f"]}'+
+    axes[1].set_title(f'Eddy turnover time vs k; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
-        f', time={header_dict["time"]}s')
+        f', time={temp_time}s')
 
 
 
@@ -287,9 +293,9 @@ def plots_related_to_energy(args=None):
     time, u_data, header_dict = import_ref_data(args=args)
 
     # Conserning ny
-    plot_energy_spectrum(u_data, header_dict, ax = axes[0], omit='ny')
-    plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
-        omit='ny', args=args)
+    # plot_energy_spectrum(u_data, header_dict, ax = axes[0], omit='ny')
+    # plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+    #     omit='ny', args=args)
     plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[2],
         path=args['path'], args=args)
 
@@ -336,14 +342,9 @@ def plots_related_to_forcing():
     axes[1].legend(legend_forcing)
 
 def plot_eddie_freqs(args=None):
-    # file_names = ['../data/udata_ny0_t1.000000e+00_n_f0_f0_j0.csv']
+    time, u_data, header_dict = import_ref_data(args=args)
 
-    for ifile, file_name in enumerate(file_names):
-        data_in, header_dict = import_data(file_name, skip_lines=args['burn_in_lines'])
-        time = data_in[:, 0]
-        u_store = data_in[:, 1:]
-
-        analyse_eddie_turnovertime(u_store, header_dict, args=args)
+    analyse_eddie_turnovertime(u_data, header_dict, args=args)
     
 
 def plot_shell_error_vs_time(args=None):
@@ -393,7 +394,7 @@ def analyse_error_norm_vs_time(u_stores, args=None):
 
     return error_norm_vs_time
 
-def plot_error_norm_vs_time(args=None):
+def plot_error_norm_vs_time(args=None, ax=None):
     
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
@@ -410,18 +411,21 @@ def plot_error_norm_vs_time(args=None):
             i in args['specific_files']]
         error_norm_vs_time = error_norm_vs_time[:, args['specific_files']]
 
-    fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6))
+    if ax is None:
+        fig, axes = plt.subplots(nrows=1, ncols=1, sharex=True, figsize=(10, 6))
+    else:
+        axes = ax
     axes.plot(time_array, error_norm_vs_time)#, 'k', linewidth=1)
     axes.set_xlabel('Time [s]')
     axes.set_ylabel('Error')
     axes.set_yscale('log')
-    # axes.legend(perturb_time_pos_list_legend)
+    axes.legend(perturb_time_pos_list_legend)
     axes.set_title(f'Error vs time; f={header_dict["f"]}'+
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]} | Folder: {args["perturb_folder"]};' +
         f'Files: {args["file_offset"]}-{args["file_offset"] + args["n_files"]}')
     
-    plt.savefig(f'../figures/week6/error_eigen_spectrogram/error_norm_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+    # plt.savefig(f'../figures/week6/error_eigen_spectrogram/error_norm_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
     
     # print('perturb_time_pos_list', perturb_time_pos_list)
     
@@ -632,44 +636,60 @@ def plot_eigen_vector_comparison(args=None):
         f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
         f', time={header_dict["time"]}s, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
 
-def plot_error_energy_spectrum_vs_time_2D(args=None):
+def plot_error_energy_spectrum_vs_time(args=None):
     
     u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, header_dict =\
         import_perturbation_velocities(args)
+    
+    # plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+    #     np.abs(u_stores[0][0:10:1, :args['n_shell_compare'] + 1]).T)
+    # plt.xlabel('Shell number')
+    # plt.ylabel('$|u_{{k<m}} - u_{{k<m}}\'|$')
+    # plt.title('Error energy spectrum vs time; first 10 time samples')
+    # # plt.yscale('log')
+    # plt.show()
 
     if args['n_files'] < 0:
         n_files = len(perturb_time_pos_list)
     else:
         n_files = args['n_files']
 
-    n_divisions = 25
-    error_spectra = np.zeros((n_files, n_divisions, n_k_vec), dtype=np.float64)
+    n_divisions = 10
+    error_spectra = np.zeros((n_files, n_divisions, args['n_shell_compare'] + 1), dtype=np.float64)
 
     # Prepare exponential time indices
-    time_linear = np.linspace(0, 10, n_divisions)
-    time_exp_indices = np.array(header_dict['N_data']/
-        np.exp(10)*np.exp(time_linear), dtype=np.int32)
-    time_exp_indices[-1] -= 1       # Include endpoint manually
+    if args['linear_time']:
+        time_indices = np.linspace(0, header_dict['N_data'] - 1, n_divisions,
+            endpoint=True, dtype=np.int32)
+    else:
+        time_linear = np.linspace(0, 10, n_divisions)
+        time_indices = np.array(header_dict['N_data']/
+            np.exp(10)*np.exp(time_linear), dtype=np.int32)
+        time_indices[-1] -= 1       # Include endpoint manually
 
     for ifile in range(n_files):
-        for i, data_index in enumerate(time_exp_indices):
-            error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index, :]).real
+        for i, data_index in enumerate(time_indices):
+            error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index,
+                :args['n_shell_compare'] + 1]).real
     
     # Calculate mean and std
-    error_mean_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
-    error_std_spectra = np.zeros((n_divisions, n_k_vec), dtype=np.float64)
+    error_mean_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        dtype=np.float64)
+    error_std_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        dtype=np.float64)
     # Find zeros    
     # error_spectra[np.where(error_spectra == 0)] = np.nan
 
 
-    for i, data_index in enumerate(time_exp_indices):
+    for i, data_index in enumerate(time_indices):
         error_mean_spectra[i, :] = np.nanmean(error_spectra[:, i, :], axis=0)
         error_std_spectra[i, :] = np.nanstd(error_spectra[:, i, :], axis=0)
 
     # error_mean_spectra[np.where(error_mean_spectra == np.nan)] = 0.0
     error_mean_spectra[0, :] = error_spectra[0, 0, :]
     plt.figure(figsize=(16, 12))
-    temp_plot = plt.plot(np.log2(k_vec_temp), error_mean_spectra.T)
+    temp_plot = plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+        error_mean_spectra.T)
 
     # for i in range(n_divisions):
     #     # print('error_std_spectra[i, :]/error_mean_spectra[i, :]', error_std_spectra[i, :]/error_mean_spectra[i, :])
@@ -678,9 +698,9 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
     #         error_mean_spectra[i, :] + error_std_spectra[i, :]/
     #         error_mean_spectra[i, :],
     #         alpha=0.4, color=temp_plot[i].get_color())
-    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{2/3}$')
+    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{-1/3}$')
     plt.yscale('log')
-    legend = [f'{item/sample_rate*dt:.3e}' for item in time_exp_indices]
+    legend = [f'{item/sample_rate*dt:.3e}' for item in time_indices]
     plt.legend(legend, loc="center right", bbox_to_anchor=(1.1, 0.5))
     plt.xlabel('Shell number')
     plt.ylabel('$u_n - u^{\'}_n$')
@@ -688,7 +708,83 @@ def plot_error_energy_spectrum_vs_time_2D(args=None):
     plt.title(f'Error energy spectrum vs time; f={header_dict["f"]}'+
             f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
             f', time={header_dict["time"]}, N_tot={n_files} | Folder: {args["perturb_folder"]}')
-    plt.savefig(f'../figures/week6/error_spectra_vs_time/single_shell5_perturb/error_spectra_vs_time_ref_ny_n_19_folder_single_shell5_perturb_ny_n{int(header_dict["n_ny"]):d}_files_{n_files}', format='png')
+    # plt.savefig(f'../figures/week6/error_spectra_vs_time/single_shell5_perturb/error_spectra_vs_time_ref_ny_n_19_folder_single_shell5_perturb_ny_n{int(header_dict["n_ny"]):d}_files_{n_files}', format='png')
+
+def plot_error_energy_vs_time_comparison(args=None):
+
+    u_stores_list = []
+    paths = ['./data/ny2.37e-08_t3.2e+01_n_f0_f1_j0_static_forcing/',
+        './data/ny3.78e-07_t3.20e+01_n_f0_f1_j0/']
+    perturb_folders = args['perturb_folder'].copy()
+    for i, perturb_folder in enumerate(perturb_folders):
+        args['path'] = paths[i]
+        args['perturb_folder'] = [perturb_folder]
+
+        u_stores, perturb_time_pos_list, _, header_dict =\
+            import_perturbation_velocities(args)
+        
+        u_stores_list.append(u_stores)
+
+    if args['n_files'] < 0:
+        n_files = len(perturb_time_pos_list)
+    else:
+        n_files = args['n_files']
+
+    n_divisions = 10
+
+    # Prepare exponential time indices
+    if args['linear_time']:
+        time_indices = np.linspace(0, header_dict['N_data'] - 1, n_divisions,
+            endpoint=True, dtype=np.int32)
+    else:
+        time_linear = np.linspace(0, 10, n_divisions)
+        time_indices = np.array(header_dict['N_data']/
+            np.exp(10)*np.exp(time_linear), dtype=np.int32)
+        time_indices[-1] -= 1       # Include endpoint manually
+
+    error_mean_spectra_list = []
+    for u_stores in u_stores_list:
+        error_spectra =\
+            np.zeros((n_files, n_divisions, args['n_shell_compare'] + 1), dtype=np.float64)
+        for ifile in range(n_files):
+            for i, data_index in enumerate(time_indices):
+                error_spectra[ifile, i, :] = np.abs(u_stores[ifile][data_index,
+                    :args['n_shell_compare'] + 1]).real
+        
+    
+        # Calculate mean and std
+        error_mean_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+            dtype=np.float64)
+        # error_std_spectra = np.zeros((n_divisions, args['n_shell_compare'] + 1),
+        #     dtype=np.float64)
+        # Find zeros    
+        # error_spectra[np.where(error_spectra == 0)] = np.nan
+
+
+        for i, data_index in enumerate(time_indices):
+            error_mean_spectra[i, :] = np.nanmean(error_spectra[:, i, :], axis=0)
+            # error_std_spectra[i, :] = np.nanstd(error_spectra[:, i, :], axis=0)
+        
+        error_mean_spectra[0, :] = error_spectra[0, 0, :]
+
+        error_mean_spectra_list.append(error_mean_spectra)
+
+    # error_mean_spectra[np.where(error_mean_spectra == np.nan)] = 0.0
+    error_mean_spectra_comparison = error_mean_spectra_list[0] - error_mean_spectra_list[1]
+    plt.figure(figsize=(16, 12))
+    temp_plot = plt.plot(np.log2(k_vec_temp[:args['n_shell_compare'] + 1]),
+        error_mean_spectra_comparison.T)
+
+    plt.plot(np.log2(k_vec_temp), k_vec_temp**(-1/3), 'k--', label='$k^{-1/3}$')
+    plt.yscale('log')
+    legend = [f'{item/sample_rate*dt:.3e}' for item in time_indices]
+    plt.legend(legend, loc="center right", bbox_to_anchor=(1.1, 0.5))
+    plt.xlabel('Shell number')
+    # plt.ylabel('$u_n - u^{\'}_n$')
+    plt.ylim(1e-22, 10)
+    plt.title(f'Comparison of error energy spectrum vs time; f={header_dict["f"]}'+
+            f', $n_f$={int(header_dict["n_f"])}'+
+            f', time={header_dict["time"]}, N_tot={n_files} | Folders: {perturb_folders[0]} - {perturb_folders[1]}')
 
 def plot_error_vector_spectrogram(args=None):
     args['n_files'] = 1
@@ -719,18 +815,28 @@ def plot_error_vector_spectrogram(args=None):
     error_spectrum = error_spectrum/np.linalg.norm(error_spectrum, axis=0)
 
     # Make spectrogram
-    plt.figure()
-    # time = np.linspace(0, perturb_header_dict['N_data']*dt/sample_rate, 10)
-    # x, y = np.meshgrid(time, np.log2(k_vec_temp))
-    plt.pcolormesh(np.abs(error_spectrum[sort_id, :]), cmap='Reds')
-    plt.xlabel('Time')
-    # plt.xticks(time)
-    plt.ylabel('Lyaponov index, j')
-    plt.title(f'Error spectrum vs time; f={perturb_header_dict["f"]}'+
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True, figsize=(16, 12))
+    
+    # Time and k_vec_temp used to make 2D arrays must be 1 item larger than the
+    # error_spectrum in order for pcolormesh to work.
+    time = np.linspace(0, perturb_header_dict['N_data']*dt/sample_rate,
+        int(perturb_header_dict['N_data']) + 1, endpoint=True)
+    time2D, k_vec2D = np.meshgrid(time, np.concatenate(([1], np.log2(k_vec_temp))))
+    
+    pcm = axes[0].pcolormesh(time2D, k_vec2D, np.abs(error_spectrum[sort_id, :]), cmap='Reds')
+    axes[0].set_xlabel('Time')
+    # axes[0].set_xticks(time)
+    axes[0].set_ylabel('Lyaponov index, j')
+    axes[0].set_title(f'Error spectrum vs time; f={perturb_header_dict["f"]}'+
         f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
         f', time={perturb_header_dict["time"]}s')#, N_tot={args["n_profiles"]*args["n_runs_per_profile"]}')
-    plt.colorbar(label='$|c_j|/||c||$)')
-    plt.savefig(f'../figures/week6/error_eigen_spectrogram/error_eigen_spectrogram_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+    fig.colorbar(pcm, ax=axes[0], label='$|c_j|/||c||$)')
+
+    plot_error_norm_vs_time(args=args, ax=axes[1])
+    axes[1].set_xlim(0, 1)
+
+    # plt.savefig(f'../figures/week7/error_eigen_spectrogram_with_error_norm_plot/error_eigen_spectrogram_ny{header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
 
     # plt.savefig(f'../figures/week6/error_eigen_value_spectra_2D/error_eigen_value_spectrum_ny{header_dict["ny"]}_time_{i/u_stores[0].shape[0]}.png', format='png')
     # plt.clim(0, 1)
@@ -768,12 +874,19 @@ def plot_error_vector_spectrum(args=None):
     for j in range(args['n_files']):
         sort_id = e_value_collection[j].argsort()[::-1]
         
-        error_spectrum = (np.linalg.inv(e_vector_collection[j]) @ u_stores[j].T).real
+        error_spectrum = (np.linalg.inv(e_vector_collection[j]) @ u_stores[j].T)
         error_spectrum = error_spectrum/np.linalg.norm(error_spectrum, axis=0)
+
+        # print(np.linalg.norm(error_spectrum, axis=0))
+
+        # print('e_vector_collection[j]', e_vector_collection[j].shape,
+        #     'error_spectrum', error_spectrum.shape)
+        # input()
 
         # Make average spectrum
         scaled_e_vectors = np.array([e_vector_collection[j] * error_spectrum[:, i] for i in range(error_spectrum.shape[1])])
-        scaled_e_vectors = np.abs(scaled_e_vectors)**2
+
+        scaled_e_vectors = np.abs(scaled_e_vectors**2)
         mean_scaled_e_vectors = np.mean(scaled_e_vectors, axis=0)
         sorted_mean_scaled_e_vectors = mean_scaled_e_vectors[:, sort_id]
         sorted_time_and_pert_mean_scaled_e_vectors[j, :, :] =\
@@ -784,8 +897,7 @@ def plot_error_vector_spectrum(args=None):
     )
     
     
-    fig = plt.figure()
-    axes = plt.axes()
+    fig, axes = plt.subplots(nrows=1, ncols=1)
     plt.pcolormesh(sorted_time_and_pert_mean_scaled_e_vectors, cmap='Reds')
     plt.xlabel('Lyaponov index')
     plt.ylabel('Shell number')
@@ -797,6 +909,174 @@ def plot_error_vector_spectrum(args=None):
     axes.yaxis.set_label_position("right")
     plt.colorbar(pad=0.1)
 
+def plot_howmoller_diagram_error_norm(args=None):
+    
+    # Import perturbation data
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend, perturb_header_dict =\
+        import_perturbation_velocities(args)
+    
+    max_time = perturb_header_dict['time'] if args['max_time'] < 0 else\
+        args['max_time']
+    time_array = np.linspace(0, max_time,
+        int(max_time*sample_rate/dt),
+        dtype=np.float64, endpoint=False)
+    
+    time2D, shell2D = np.meshgrid(time_array, k_vec_temp)
+    energy_array = (u_stores[0]*np.conj(u_stores[0])).real.T
+    mean_shell_energy = np.reshape(np.mean(energy_array, axis=0), (1, time_array.shape[0]))
+    energy_rel_shell_mean_array = energy_array / mean_shell_energy
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True, figsize=(16, 12))
+
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), energy_rel_shell_mean_array,
+        cmap='Reds', levels=20)
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for $|u - u\'|²/\overline{{|u|²}}^k$; f={perturb_header_dict["f"]}'+
+        f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
+        f', time={perturb_header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], label='$|u - u\'|²/\overline{{|u|²}}^k$')
+    pcm.negative_linestyle = 'solid'
+
+    plot_error_norm_vs_time(args=args, ax=axes[1])
+
+    # plt.savefig(f'../figures/week7/howmoller_diagrams/howmoller_diagram_perturb_energy_rel_mean_energy_per_shell_ny{perturb_header_dict["ny"]:.2e}_file_{args["file_offset"]}', format='png')
+
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    # plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+    #     args=args)
+
+def plot_howmoller_diagram_u_energy(args=None):
+    
+    # Import reference data
+    time, u_data, header_dict = import_ref_data(args=args)
+
+    # time_array = np.linspace(0, perturb_header_dict['time'],
+    #     int(perturb_header_dict['time']*sample_rate/dt),
+    #     dtype=np.float64, endpoint=False)
+
+    
+    time2D, shell2D = np.meshgrid(time, k_vec_temp)
+    energy_array = (u_data*np.conj(u_data)).real.T
+    
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True)
+    
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), np.log10(energy_array), cmap='Reds',
+        levels=16)
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    pcm.negative_linestyle = 'solid'
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for log$||u - u\'||²$; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], extend='max', label='log$||u - u\'||²$')
+
+    plot_inviscid_quantities(time, u_data, header_dict, ax = axes[1],
+        omit='ny', args=args)
+
+
+def plot_howmoller_diagram_u_energy_rel_mean(args=None):
+    
+    # Import reference data
+    time, u_data, header_dict = import_ref_data(args=args)
+
+    # time_array = np.linspace(0, perturb_header_dict['time'],
+    #     int(perturb_header_dict['time']*sample_rate/dt),
+    #     dtype=np.float64, endpoint=False)
+
+    
+    time2D, shell2D = np.meshgrid(time, k_vec_temp)
+    energy_array = (u_data*np.conj(u_data)).real.T
+    mean_energy = np.reshape(np.mean(energy_array, axis=1), (n_k_vec, 1))
+    energy_rel_mean_array = energy_array - mean_energy
+    
+    
+    fig, axes = plt.subplots(nrows=2, ncols=1, sharex=True,
+        constrained_layout=True)
+    
+    pcm = axes[0].contourf(time2D, np.log2(shell2D), energy_rel_mean_array, cmap='Reds',
+        levels=20)
+    # pcm = axes[0].contour(np.log2(shell2D), time2D, np.log10(energy_array), colors='k',
+    #     levels=16, linewidths=1, linestyles='solid')
+    pcm.negative_linestyle = 'solid'
+    axes[0].set_ylabel('Shell number')
+    axes[0].set_xlabel('Time')
+    axes[0].set_title(f'Howmöller diagram for $|u|² - \overline{{|u|²}}$; f={header_dict["f"]}'+
+        f', $n_f$={int(header_dict["n_f"])}, $\\nu$={header_dict["ny"]:.2e}'+
+        f', time={header_dict["time"]}s')
+    fig.colorbar(pcm, ax=axes[0], extend='max', label='$|u|² - \overline{{|u|²}}$')
+    plot_inviscid_quantities_per_shell(time, u_data, header_dict, ax = axes[1],
+        args=args)
+
+def plot_lyaponov_exp_histogram(args=None):
+
+    u_stores, perturb_time_pos_list, perturb_time_pos_list_legend,\
+        perturb_header_dict = import_perturbation_velocities(args)
+
+    if args['n_files'] < 0:
+        n_files = len(perturb_time_pos_list)
+    else:
+        n_files = args['n_files']
+
+    time_array = np.linspace(0, perturb_header_dict['time'],
+        int(perturb_header_dict['time']*sample_rate/dt),
+        dtype=np.float64, endpoint=False)
+
+    n_slopes = 20
+    slope_width = int(perturb_header_dict['N_data']//(n_slopes))
+
+    def linear_func(x, a, b):
+        return a*x + b
+
+    error_norm_vs_time = analyse_error_norm_vs_time(u_stores, args=args)
+
+
+    exp_store = np.zeros(n_slopes*n_files)
+    # pcov_store = np.zeros(n_slopes*n_files)
+    y_span = np.zeros(n_slopes*n_files)
+
+    # fig, axes = plt.subplots(nrows=2, ncols=1)
+    for i in range(n_files):
+        for j in range(n_slopes):
+            popt, pcov = SPCurveFit(linear_func, time_array[slope_width*j:slope_width*(j + 1)],
+                np.log10(error_norm_vs_time[slope_width*j:slope_width*(j + 1), i]))
+            
+            y_span[i*n_slopes + j] = np.log10(error_norm_vs_time[slope_width*(j + 1) - 1, i])\
+                - np.log10(error_norm_vs_time[slope_width*j, i])
+            
+            exp_store[i*n_slopes + j] = popt[0]
+            # pcov_store[i*n_slopes + j] = pcov[0]
+            
+    #         axes[0].plot(time_array[slope_width*j:slope_width*(j + 1)],
+    #             popt[0]*time_array[slope_width*j:slope_width*(j + 1)] + popt[1], 'k')
+            
+    # axes[0].plot(time_array, np.log10(error_norm_vs_time))
+    # axes[0].set_xlabel('Time')
+    # axes[0].set_ylabel('log($||u - u\'||$)')
+    # axes[0].set_title(f'Lyaponov exponent vs time; f={perturb_header_dict["f"]}'+
+    #     f', $n_f$={int(perturb_header_dict["n_f"])}, $\\nu$={perturb_header_dict["ny"]:.2e}'+
+    #     f', time={perturb_header_dict["time"]} | Folder: {args["perturb_folder"]};' +
+    #     f'Files: {args["file_offset"]}-{args["file_offset"] + args["n_files"]}')
+    
+    # y_span = y_span/np.max(y_span)
+    # axes[1].hist(exp_store[exp_store > 0], weights=y_span[exp_store > 0], density=True)
+    # axes[1].set_xlabel('Lyaponov exponent')
+    # axes[1].set_ylabel('Count density')
+    # axes[1].set_title('Maximum Lyaponov exponent distribution')
+
+    # plt.subplots_adjust(hspace=0.238)
+
+    y_span = y_span/np.max(y_span)
+    plt.hist(exp_store[exp_store > 0], bins=20, density=True)
+    plt.xlabel('Lyaponov exponent')
+    plt.ylabel('Count density')
+    plt.title('Maximum Lyaponov exponent distribution')
 
 if __name__ == "__main__":
     # Define arguments
@@ -806,15 +1086,19 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--start_time", nargs='+', type=float)
     arg_parser.add_argument("--specific_ref_records", nargs='+', default=[0], type=int)
+    arg_parser.add_argument("--max_time", default=-1, type=float)
+    arg_parser.add_argument("--time_offset", default=-1, type=float)
 
     subparsers = arg_parser.add_subparsers()
     perturb_parser = subparsers.add_parser("perturb_plot", help=
         'Arguments needed for plotting the perturbation vs time plot.')
-    perturb_parser.add_argument("--perturb_folder", nargs='?', default=None, type=str)
+    perturb_parser.add_argument("--perturb_folder", nargs='+', default=None, type=str)
     perturb_parser.add_argument("--n_files", default=-1, type=int)
     perturb_parser.add_argument("--file_offset", default=0, type=int)
     perturb_parser.add_argument("--specific_files", nargs='+', default=None, type=int)
     perturb_parser.add_argument("--combinations", action='store_true')
+    perturb_parser.add_argument("--linear_time", default=False, type=bool)
+    perturb_parser.add_argument("--perturbation_energy", default=False, type=bool)
     # eigen_mode_parser = subparsers.add_parser("eigen_mode_plot", help=
     #     'Arguments needed for plotting 3D eigenmode analysis.')
     arg_parser.add_argument("--burn_in_time",
@@ -829,9 +1113,25 @@ if __name__ == "__main__":
     arg_parser.add_argument("--time_to_run",
                                    default=0.1,
                                    type=float)
+    arg_parser.add_argument("--subplot_config", nargs=2,
+                                   default=[None, None],
+                                   type=int)
+    arg_parser.add_argument("--n_shell_compare",
+                                   default=19,
+                                   type=int)
 
-    args = vars(arg_parser.parse_args())
+    args = vars(arg_parser.parse_args())  
     print('args', args)
+
+
+    # Make subplots if requested
+    if args['subplot_config'][0] is not None:
+        fig, axes = plt.subplots(nrows=args['subplot_config'][0],
+            ncols=args['subplot_config'][1])
+    
+        args['fig'] = fig
+        args['axes'] = axes
+
 
     # Set seed if wished
     if args['seed_mode']:
@@ -867,7 +1167,10 @@ if __name__ == "__main__":
             plot_error_norm_vs_time(args=args)
     
     if "error_spectrum_vs_time" in args['plot_type']:
-        plot_error_energy_spectrum_vs_time_2D(args=args)
+        plot_error_energy_spectrum_vs_time(args=args)
+    
+    if "error_spectrum_vs_time_comparison" in args['plot_type']:
+        plot_error_energy_vs_time_comparison(args=args)
 
     if "shell_error" in args['plot_type']:
         if args['path'] is None:
@@ -889,5 +1192,17 @@ if __name__ == "__main__":
 
     if "error_vector_spectrum" in args['plot_type']:
         plot_error_vector_spectrum(args=args)
+
+    if "error_howmoller" in args['plot_type']:
+        plot_howmoller_diagram_error_norm(args=args)
+
+    if "u_howmoller" in args['plot_type']:
+        plot_howmoller_diagram_u_energy(args=args)
+
+    if "u_howmoller_rel_mean" in args['plot_type']:
+        plot_howmoller_diagram_u_energy_rel_mean(args=args)
+
+    if "lyaponov_exp_histogram" in args['plot_type']:
+        plot_lyaponov_exp_histogram(args=args)
 
     plt.show()

@@ -173,7 +173,12 @@ def perturbation_runner(u_old, perturb_positions, du_array, data_out, args,
         f" {run_count // args['n_runs_per_profile']}, profile run" +
         f" {run_count % args['n_runs_per_profile']}")
     
-    run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'])
+    # Define forcing array
+    forcing_array = np.zeros(n_k_vec + 2*bd_size, dtype=np.complex128)
+    forcing_array[n_forcing + bd_size] = args['forcing']
+    
+    run_model(u_old, du_array, data_out, args['Nt'], args['ny'], args['forcing'],
+        forcing_array, args['dynamic_forcing'])
     save_data(data_out, subfolder=Path(args['path']).name, prefix=f'perturb{perturb_count}_',
         perturb_position=perturb_positions[run_count // args['n_runs_per_profile']],
         args=args)
@@ -293,6 +298,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("--seed_mode", default=False, type=bool)
     arg_parser.add_argument("--single_shell_perturb", default=None, type=int)
     arg_parser.add_argument("--start_time_offset", default=None, type=float)
+    arg_parser.add_argument("--dynamic_forcing", default=False, type=bool)
+
 
     args = vars(arg_parser.parse_args())
 

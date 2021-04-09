@@ -11,11 +11,20 @@ import matplotlib.pyplot as plt
 # s[where] = np.nan
 # print(s)
 
-s = np.reshape(np.arange(0, 20, 1), (4, 5))
-v = np.reshape(np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6]]), (2, 5))
+# s = np.reshape(np.arange(0, 20, 1), (5, 4))
+# v = np.array([[1, 2, 3, 4, 5], [2, 3, 4, 5, 6], [2, 3, 4, 5, 6], [2, 3, 4, 5, 6], [2, 3, 4, 5, 6]])
 # v_prime = np.array([1, 2, 3, 4, 5])
 # v_repeat = np.repeat(v, 4, axis=0)
 # s_repeat = np.repeat(s, 4, axis=0)
 # print(s_repeat * v_repeat)
-print(s)
+# print(s, v)
+# print(v*s[:, 0])
 # print()
+
+s = np.array([1+3j, 2+0j, -6+6j], dtype=np.complex)
+
+print(s)
+print(s/np.linalg.norm(s))
+print(np.linalg.norm(s/np.linalg.norm(s)))
+
+

@@ -3,7 +3,8 @@ from src.params.params import *
 
 @njit((types.Array(types.complex128, 1, 'C', readonly=True),
        types.Array(types.complex128, 1, 'C', readonly=False),
-       types.float64, types.float64),
+       types.float64,
+       types.Array(types.complex128, 1, 'C', readonly=True)),
        cache=True)
 def derivative_evaluator(u_old=None, du=None, ny=None, forcing=None):
     """Derivative evaluator used in the Runge-Kutta method.
@@ -34,14 +35,15 @@ def derivative_evaluator(u_old=None, du=None, ny=None, forcing=None):
                         - ny*k_vec_temp**2*u_old[bd_size:-bd_size]
 
     # Apply forcing
-    du[n_forcing + bd_size] += forcing
+    du += forcing
     return du
 
 @njit(types.Array(types.complex128, 1, 'C', readonly=False)
       (types.Array(types.complex128, 1, 'C', readonly=False),
        types.float64,
        types.Array(types.complex128, 1, 'C', readonly=False),
-       types.float64, types.float64),
+       types.float64,
+       types.Array(types.complex128, 1, 'C', readonly=True)),
        cache=True)
 def runge_kutta4_vec(y0=0, h=1, du=None, ny=None, forcing=None):
     """Performs the Runge-Kutta-4 integration of the shell velocities.

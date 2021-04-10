@@ -131,7 +131,7 @@ def import_perturbation_velocities(args=None):
 
         perturb_time_pos_list.append(int(perturb_header_dict["perturb_pos"]))
         perturb_time_pos_list_legend.append(
-            f'Start time: {perturb_header_dict["perturb_pos"]/sample_rate*dt:.3f}s')
+            f'Start time: {perturb_header_dict["perturb_pos"]/sample_rate*dt:.1f}')
     
     ascending_perturb_pos_index = np.argsort(perturb_time_pos_list)
     perturb_time_pos_list = np.array([perturb_time_pos_list[i] for i
@@ -154,6 +154,7 @@ def import_perturbation_velocities(args=None):
 
     for iperturb_file, perturb_file_name in enumerate(
             perturb_file_names[i] for i in ascending_perturb_pos_index):
+        
 
         ref_file_match_keys_array = np.array(list(ref_file_match.keys()))
         sum_pert_files = sum([len(ref_file_match[ref_file_index]) for
